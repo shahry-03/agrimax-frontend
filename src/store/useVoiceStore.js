@@ -2,19 +2,8 @@ import { create } from 'zustand';
 
 /**
  * Voice assistant state store.
- *
- * State fields:
- * - isListening      — microphone is active
- * - isProcessing     — waiting for AI response from backend
- * - transcript       — current/last spoken text
- * - aiResponse       — last AI response object from backend
- * - error            — error message (string or null)
- * - permissionStatus — 'unknown' | 'granted' | 'denied' | 'unsupported'
- * - language         — 'ur' | 'en' — current recognition language
- * - history          — last 5 voice commands + responses
- * - responseAt       — timestamp (ms) when last response was received (for auto-dismiss)
  */
-const useVoiceStore = create((set, get) => ({
+const useVoiceStore = create((set) => ({
   isListening: false,
   isProcessing: false,
   transcript: '',

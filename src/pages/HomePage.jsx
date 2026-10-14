@@ -1,180 +1,115 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HiMicrophone, HiChatBubbleLeftRight, HiArrowPath } from 'react-icons/hi2';
+import useChatStore from '../store/useChatStore';
 import useVoice from '../hooks/useVoice';
-import useAuthStore from '../store/useAuthStore';
-import { aiApi } from '../services/api';
+import HeroSection from '../components/dashboard/HeroSection';
+import AIChatPanel from '../components/AIChatPanel';
+import MarketPriceWidget from '../components/dashboard/MarketPriceWidget';
+import QuickActions from '../components/dashboard/QuickActions';
+import FarmerGrowthCard from '../components/dashboard/FarmerGrowthCard';
+import FeatureStrip from '../components/dashboard/FeatureStrip';
 
-const QUICK_ACTIONS = [
-  { icon: '🌾', label: 'فصل بیچیں', labelEn: 'Sell Crop', voiceCmd: 'Meri fasal bechni hai' },
-  { icon: '💰', label: 'قیمتیں دیکھیں', labelEn: 'Check Prices', path: '/prices', voiceCmd: 'Gehu ki price batao' },
-  { icon: '👛', label: 'والیٹ', labelEn: 'Wallet', path: '/wallet', voiceCmd: 'Mera wallet dikhao' },
-  { icon: '🛒', label: 'مارکیٹ', labelEn: 'Market', path: '/marketplace', voiceCmd: 'Market dikhao' },
-];
-
-const VOICE_HINTS = [
-  '"گندم کی قیمت بتاؤ"',
-  '"میری فصل بیچنی ہے"',
-  '"والیٹ دکھاؤ"',
-  '"آج کا مشورہ دو"',
-];
-
-const TIP_CATEGORY_ICONS = {
-  price: '💰', planting: '🌱', harvest: '🌾',
-  weather: '☁️', pest: '🐛', irrigation: '💧', market: '📊',
-};
-
-export default function HomePage() {
+export function HomePage() {
   const navigate = useNavigate();
-  const { startListening, processText } = useVoice();
-  const { isAuthenticated, user } = useAuthStore();
+  const {
+    language,
+    isRecording,
+    isProcessing,
+    awaitingOtp,
+    pendingPhone,
+  } = useChatStore();
 
-  const [tip, setTip] = useState(null);
-  const [tipLoading, setTipLoading] = useState(true);
-  const [hintIndex, setHintIndex] = useState(0);
+  const { startRecording, stopAndProcessAudio } = useVoice();
 
-  // Rotate voice hints every 3s
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setHintIndex((i) => (i + 1) % VOICE_HINTS.length);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Load AI tip from backend (routed through backend — no direct Gemini calls)
-  useEffect(() => {
-    const loadTip = async () => {
-      try {
-        // Cache in sessionStorage for the day
-        const cacheKey = `agrimax_tip_${new Date().toDateString()}`;
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-          setTip(JSON.parse(cached));
-          setTipLoading(false);
-          return;
-        }
-
-        const { data } = await aiApi.getDailyTip();
-        if (data.data) {
-          setTip(data.data);
-          sessionStorage.setItem(cacheKey, JSON.stringify(data.data));
-        }
-      } catch (err) {
-        console.warn('Could not load daily tip:', err.message);
-        // Use a static fallback
-        setTip({
-          titleUr: 'آج کی زرعی ٹپ',
-          titleEn: "Today's Farming Tip",
-          tipUr: 'اس موسم میں اپنی فصل کی آبپاشی باقاعدگی سے کریں۔ صبح یا شام کو پانی دینا بہتر ہے۔',
-          tipEn: 'Irrigate your crops regularly this season. Morning or evening watering is best.',
-          category: 'irrigation',
-        });
-      } finally {
-        setTipLoading(false);
-      }
-    };
-
-    loadTip();
-  }, []);
-
-  const handleQuickAction = (action) => {
-    if (action.path) {
-      navigate(action.path);
+  const handleStartVoice = async () => {
+    if (isProcessing) return;
+    if (isRecording) {
+      const hint = language === 'ur' ? 'ur' : language === 'en' ? 'en' : undefined;
+      await stopAndProcessAudio(hint);
     } else {
-      // Trigger voice command directly
-      processText(action.voiceCmd);
+      await startRecording();
     }
   };
 
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   return (
-    <div className="space-y-5">
-      {/* Welcome Card */}
-      <div className="glass-card p-5 animate-fade-up">
-        <p className="text-slate-400 text-sm">
-          {isAuthenticated ? 'خوش آمدید 👋' : 'AgriMax میں خوش آمدید'}
-        </p>
-        <h2 className="text-2xl font-bold mt-1 urdu-text">
-          {isAuthenticated && user?.name ? user.name : 'کسان بھائی'}
-        </h2>
-        <p className="text-slate-400 text-sm mt-1 urdu-text">
-          آواز سے بات کریں یا نیچے بٹن دبائیں
-        </p>
-      </div>
-
-      {/* Voice Prompt Card */}
-      <div
-        onClick={startListening}
-        className="glass-card p-5 cursor-pointer border border-green-500/20 hover:border-green-500/50 transition-all animate-fade-up group"
-        style={{ animationDelay: '0.1s' }}
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-green-600 flex items-center justify-center text-white text-2xl group-hover:animate-mic-pulse transition-all shadow-lg shadow-green-900/30">
-            <HiMicrophone />
+    <div className="space-y-6 animate-fade-up w-full min-w-0">
+      {/* ── Multi-turn OTP Alert Banner ── */}
+      {awaitingOtp && (
+        <div className="bg-[#FEF3C7] border border-[#FCD34D] p-4 rounded-2xl flex items-center justify-between shadow-xs animate-pulse">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🔐</span>
+            <div>
+              <p className="text-[#92400E] font-bold text-sm sm:text-base">
+                {language === 'ur'
+                  ? 'لاگ ان کے لیے مائیک دبا کر OTP بولیں یا چیٹ میں لکھیں'
+                  : 'Speak or type your OTP below to complete login'}
+              </p>
+              <p className="text-[#B45309] text-xs">
+                {pendingPhone
+                  ? `${language === 'ur' ? 'فون نمبر:' : 'Phone:'} ${pendingPhone}`
+                  : ''}
+              </p>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-lg font-semibold text-green-400 urdu-text">🎤 بولیں</p>
-            <p className="text-slate-400 text-sm">Tap to speak a command</p>
-          </div>
-        </div>
-
-        {/* Rotating voice hint */}
-        <div className="mt-4 h-8 flex items-center">
-          <span
-            key={hintIndex}
-            className="text-sm bg-slate-700/50 text-green-300 px-3 py-1.5 rounded-full urdu-text animate-fade-up"
-          >
-            {VOICE_HINTS[hintIndex]}
-          </span>
-        </div>
-      </div>
-
-      {/* Quick Actions Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {QUICK_ACTIONS.map((action, i) => (
           <button
-            key={i}
-            onClick={() => handleQuickAction(action)}
-            className="farmer-btn animate-fade-up"
-            style={{ animationDelay: `${0.2 + i * 0.08}s` }}
+            type="button"
+            onClick={handleStartVoice}
+            className="px-3.5 py-1.5 bg-[#D97706] hover:bg-[#B45309] text-white text-xs font-bold rounded-xl transition cursor-pointer"
           >
-            <span className="icon">{action.icon}</span>
-            <span className="text-sm font-semibold urdu-text">{action.label}</span>
-            <span className="text-[10px] text-slate-400">{action.labelEn}</span>
+            {language === 'ur' ? 'OTP بولیں 🎤' : 'Speak OTP 🎤'}
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
-      {/* AI Daily Tip (from backend — no direct Gemini calls) */}
-      <div className="glass-card p-5 animate-fade-up" style={{ animationDelay: '0.5s' }}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <HiChatBubbleLeftRight className="text-amber-400 text-xl" />
-            <span className="text-sm font-semibold text-amber-400 urdu-text">آج کی ٹپ</span>
+      {/* ── Main Dashboard Workspace ──
+          At ultra-wide widths (>=1536px), layout supports 2 tracks (Main + Side cards).
+          At standard desktop widths (1200–1440px, e.g. 1280x720, 1366x768), information cards move below the chat
+          to guarantee that both the Hero and the AI Assistant have ample, un-cramped width.
+      ── */}
+      <div className="2xl:grid 2xl:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start w-full">
+        {/* ── Primary Column: 1. Hero Banner + 2. AI Assistant Panel ── */}
+        <div className="flex flex-col gap-6 min-w-0 w-full">
+          {/* 1. Hero Banner */}
+          <HeroSection onStartVoiceChat={handleStartVoice} />
+
+          {/* 2. AI Assistant Panel */}
+          <AIChatPanel />
+
+          {/* On standard widths (<1536px), show the information cards right below the main workspace */}
+          <div className="2xl:hidden flex flex-col gap-6 w-full pt-1">
+            {/* 3. Market Price and Quick Actions (2-column grid at standard desktop) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+              <MarketPriceWidget onSelectCrop={() => navigate('/prices')} />
+              <QuickActions onStartVoice={handleStartVoice} />
+            </div>
+
+            {/* 4. Farmer Growth Promotional Card */}
+            <FarmerGrowthCard />
           </div>
-          {tip && (
-            <span className="text-lg">
-              {TIP_CATEGORY_ICONS[tip.category] || '💡'}
-            </span>
-          )}
         </div>
 
-        {tipLoading ? (
-          <div className="space-y-2">
-            <div className="h-4 bg-slate-700/60 rounded animate-pulse w-3/4" />
-            <div className="h-4 bg-slate-700/60 rounded animate-pulse w-full" />
-            <div className="h-4 bg-slate-700/60 rounded animate-pulse w-2/3" />
-          </div>
-        ) : tip ? (
-          <>
-            <p className="text-slate-200 font-medium text-sm urdu-text leading-relaxed">
-              {tip.tipUr}
-            </p>
-            <p className="text-slate-500 text-xs mt-2 leading-relaxed">
-              {tip.tipEn}
-            </p>
-          </>
-        ) : null}
+        {/* ── Secondary Column (visible at >=1536px wide desktop): 3. Market Info + Quick Actions + 4. Growth Card ── */}
+        <div className="hidden 2xl:flex flex-col gap-5 min-w-0 w-full sticky top-24">
+          {/* 3. Market Price Information */}
+          <MarketPriceWidget onSelectCrop={() => navigate('/prices')} />
+
+          {/* Quick Actions */}
+          <QuickActions onStartVoice={handleStartVoice} />
+
+          {/* 4. Farmer Growth Card */}
+          <FarmerGrowthCard />
+        </div>
       </div>
+
+      {/* ── Supporting Information Strip (5 Platform Pillars) ── */}
+      <FeatureStrip />
     </div>
   );
 }
+
+export default HomePage;

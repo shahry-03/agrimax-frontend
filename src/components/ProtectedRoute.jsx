@@ -1,11 +1,11 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import useAuthStore from '../store/useAuthStore';
+import useAppStore from '../store/useAppStore';
 
 /**
  * ProtectedRoute — redirects to /login if not authenticated.
  * Wraps protected routes in the BrowserRouter.
  */
 export default function ProtectedRoute() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated } = useAppStore();
   return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
 }

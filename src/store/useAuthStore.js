@@ -1,28 +1,8 @@
-import { create } from 'zustand';
+import useAppStore from './useAppStore';
 
-const useAuthStore = create((set) => ({
-  user: JSON.parse(localStorage.getItem('agrimax_user') || 'null'),
-  token: localStorage.getItem('agrimax_token') || null,
-  isAuthenticated: !!localStorage.getItem('agrimax_token'),
-
-  login: (user, token, refreshToken) => {
-    localStorage.setItem('agrimax_token', token);
-    localStorage.setItem('agrimax_refresh_token', refreshToken);
-    localStorage.setItem('agrimax_user', JSON.stringify(user));
-    set({ user, token, isAuthenticated: true });
-  },
-
-  logout: () => {
-    localStorage.removeItem('agrimax_token');
-    localStorage.removeItem('agrimax_refresh_token');
-    localStorage.removeItem('agrimax_user');
-    set({ user: null, token: null, isAuthenticated: false });
-  },
-
-  updateUser: (user) => {
-    localStorage.setItem('agrimax_user', JSON.stringify(user));
-    set({ user });
-  },
-}));
+/**
+ * useAuthStore — Proxies to unified useAppStore for backwards compatibility.
+ */
+export const useAuthStore = useAppStore;
 
 export default useAuthStore;

@@ -1,64 +1,85 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 const api = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
-  headers: { 'Content-Type': 'application/json' },
-  timeout: 15000, // 15 second timeout
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 15000,
 });
 
-// ── JWT interceptor — auto-attach token ──
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('agrimax_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// ── JWT Interceptor — auto-attach Bearer token ──
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('agrimax_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-// ── Response interceptor — handle 401 + network errors ──
+// ── Response Interceptor — friendly error handling & 401 handling ──
 api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
-      // Don't redirect for auth endpoints — let LoginPage handle OTP errors itself
-      const url = err.config?.url || '';
-      const isAuthEndpoint = url.includes('/auth/');
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const url = error.config?.url || '';
+      const isAuthEndpoint = url.includes('/auth/') || url.includes('/voice/');
       if (!isAuthEndpoint) {
         localStorage.removeItem('agrimax_token');
         localStorage.removeItem('agrimax_refresh_token');
         localStorage.removeItem('agrimax_user');
-        window.location.href = '/login';
       }
     }
-    // Network error (backend down, timeout, etc.)
-    if (!err.response) {
-      err.message = 'Server not reachable. Please check your connection.';
+
+    if (!error.response) {
+      error.friendlyMessage = {
+        en: 'Cannot connect to AgriMax server. Please check your internet or backend status.',
+        ur: 'ایگری میکس سرور سے رابطہ نہیں ہو سکا۔ برائے مہربانی انٹرنیٹ یا سرور چیک کریں۔',
+      };
+    } else {
+      const data = error.response.data;
+      error.friendlyMessage = {
+        en: data?.messageEn || data?.error || 'An unexpected error occurred.',
+        ur: data?.messageUr || 'کوئی غیر متوقع خرابی پیش آئی ہے۔',
+      };
     }
-    return Promise.reject(err);
+
+    return Promise.reject(error);
   }
 );
 
 // ── Auth APIs ──
 export const authApi = {
-  sendOtp: (phoneNumber) => api.post('/auth/send-otp', { phoneNumber }),
-  verifyOtp: (phoneNumber, otp) => api.post('/auth/verify-otp', { phoneNumber, otp }),
+  sendOtp: (phone) => api.post('/auth/send-otp', { phone }),
+  verifyOtp: (phone, otp) => api.post('/auth/verify-otp', { phone, otp }),
 };
 
-// ── Voice API ──
 export const voiceApi = {
-  /** Send a text transcript to the AI pipeline. Returns full ApiResponse. */
-  sendCommand: (transcript) => api.post('/voice/command', { transcript }),
+  /**
+   * POST /api/v1/voice/command
+   * Body: { transcript, sessionId }
+   */
+  sendCommand: (transcript, sessionId) =>
+    api.post('/voice/command', { transcript, sessionId }),
+
+  /**
+   * POST /api/v1/voice/audio
+   * Body: FormData (audio: File, sessionId: string, languageHint?: string)
+   */
+  sendAudio: (formData) =>
+    api.post('/voice/audio', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
 };
 
-// ── AI APIs (all routed through backend — no direct Gemini calls from frontend) ──
-export const aiApi = {
-  /** GET daily agricultural tip (Urdu + English, Gemini-powered, cached daily). */
-  getDailyTip: () => api.get('/ai/tip'),
-};
-
-// ── Catalog APIs ──
+// ── Catalog & Crop APIs ──
 export const catalogApi = {
   listCrops: () => api.get('/crops/public/list'),
   getCropPrice: (cropId) => api.get(`/crops/public/${cropId}/price`),
@@ -76,10 +97,10 @@ export const walletApi = {
   getTransactions: () => api.get('/wallet/transactions'),
 };
 
-// ── User / Profile APIs ──
-export const userApi = {
-  getProfile: () => api.get('/users/profile'),
-  updateProfile: (name) => api.patch('/users/profile', { name }),
+// ── AI APIs ──
+export const aiApi = {
+  getDailyTip: () => api.get('/ai/tip'),
+  getCacheStats: () => api.get('/ai/cache/stats'),
 };
 
 export default api;

@@ -1,234 +1,299 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
-import useAuthStore from '../store/useAuthStore';
-import { HiPhone, HiKey, HiArrowRight, HiMicrophone } from 'react-icons/hi2';
+import useAppStore from '../store/useAppStore';
 import useVoice from '../hooks/useVoice';
+import VoiceButton from '../components/VoiceButton';
 
-export default function LoginPage() {
+export function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuthStore();
-  const { startListening } = useVoice();
+  const {
+    isAuthenticated,
+    login,
+    language,
+    awaitingOtp,
+    pendingPhone,
+    setAwaitingOtp,
+    isRecording,
+    recordingDuration,
+    isProcessing,
+  } = useAppStore();
+  const { startRecording, stopAndProcessAudio } = useVoice();
 
-  const [step, setStep] = useState('phone'); // 'phone' | 'otp'
-  const [phone, setPhone] = useState('');
+  // If already logged in, redirect to home
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  const [overridePhoneStep, setOverridePhoneStep] = useState(false);
+  const [manualPhone, setManualPhone] = useState('');
+
+  // Derived step: synchronized between manual keypad & voice login
+  const step = awaitingOtp && !overridePhoneStep ? 'otp' : 'phone';
+  const phone = overridePhoneStep ? manualPhone : (pendingPhone || manualPhone);
+
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
-  const resendTimerRef = useRef(null);
+  const timerRef = useRef(null);
 
-  // Start 60-second resend cooldown
-  const startResendCooldown = () => {
+  const startCooldown = useCallback(() => {
     setResendCooldown(60);
-    resendTimerRef.current = setInterval(() => {
-      setResendCooldown((c) => {
-        if (c <= 1) {
-          clearInterval(resendTimerRef.current);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
           return 0;
         }
-        return c - 1;
+        return prev - 1;
       });
     }, 1000);
-  };
+  }, []);
 
-  const handleSendOtp = async () => {
-    if (phone.length !== 11) {
-      setError('11 ہندسے کا نمبر درج کریں (مثلاً 03001234567)');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      await authApi.sendOtp(phone);
-      setStep('otp');
-      startResendCooldown();
-    } catch (err) {
-      setError(err.response?.data?.messageUr || 'OTP نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
-  const handleVerifyOtp = async () => {
-    if (otp.length !== 6) {
-      setError('6 ہندسے کا OTP درج کریں');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const { data } = await authApi.verifyOtp(phone, otp);
-      const d = data.data; // AuthResponse object
-
-      // Fix: backend sends userId (not id), name, role, accessToken, refreshToken
-      login(
-        { id: d.userId, name: d.name, role: d.role },
-        d.accessToken,
-        d.refreshToken
+  const handleSendOtp = async (e) => {
+    e?.preventDefault();
+    if (!phone || phone.length < 10) {
+      setError(
+        language === 'ur'
+          ? 'براہ کرم درست فون نمبر درج کریں (مثال: 03001234567)'
+          : 'Please enter a valid phone number (e.g. 03001234567)'
       );
-      navigate('/');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      await authApi.sendOtp(phone);
+      setAwaitingOtp(true, phone);
+      setOverridePhoneStep(false);
+      startCooldown();
     } catch (err) {
-      setError(err.response?.data?.messageUr || 'OTP غلط ہے یا میعاد ختم ہو گئی۔');
+      setError(
+        err.friendlyMessage?.[language] ||
+          err.response?.data?.messageUr ||
+          'OTP نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendOtp = async () => {
-    if (resendCooldown > 0) return;
+  const handleVerifyOtp = async (e) => {
+    e?.preventDefault();
+    if (!otp || otp.length < 4) {
+      setError(
+        language === 'ur' ? 'براہ کرم درست OTP درج کریں' : 'Please enter valid OTP'
+      );
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      await authApi.sendOtp(phone);
-      startResendCooldown();
-      setOtp('');
+      const res = await authApi.verifyOtp(phone, otp);
+      const data = res.data?.data;
+      if (data?.accessToken) {
+        login(
+          { id: data.userId, name: data.name || 'Farmer', phone },
+          data.accessToken,
+          data.refreshToken
+        );
+        navigate('/', { replace: true });
+      }
     } catch (err) {
-      setError(err.response?.data?.messageUr || 'OTP دوبارہ نہیں بھیجا جا سکا۔');
+      setError(
+        err.friendlyMessage?.[language] ||
+          err.response?.data?.messageUr ||
+          'غلط یا منسوخ شدہ OTP۔ دوبارہ کوشش کریں۔'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center px-4">
-      {/* Logo */}
-      <div className="text-center mb-8 animate-fade-up">
-        <span className="text-7xl block mb-2">🌾</span>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-green-400 to-emerald-300 bg-clip-text text-transparent">
+    <div className="min-h-[85vh] flex flex-col items-center justify-center px-4 py-8">
+      {/* Brand Header */}
+      <div className="text-center mb-6 animate-fade-up">
+        <span className="text-5xl block mb-2">🌾</span>
+        <h1 className="text-3xl font-black text-[#078747] tracking-tight">
           AgriMax
         </h1>
-        <p className="text-slate-400 mt-2 urdu-text">کسانوں کا ذہین ساتھی</p>
-        <p className="text-slate-500 text-sm">Smart Partner for Farmers</p>
+        <p className="text-[#62758A] font-medium text-sm sm:text-base mt-1 urdu-text">
+          پاکستانی کسانوں کا آواز پر مبنی پلیٹ فارم
+        </p>
       </div>
 
-      {/* Login Card */}
-      <div className="glass-card p-6 w-full max-w-sm animate-fade-up" style={{ animationDelay: '0.2s' }}>
+      <div className="w-full max-w-md bg-white border border-[#E2EAF0] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+        {/* ── Option A: Voice-First Login (Core Highlight) ── */}
+        <div className="bg-[#E8F5E9] border border-[#C8E6C9] rounded-2xl p-4 text-center space-y-3 shadow-2xs">
+          <p className="text-xs uppercase tracking-wider text-[#056B3B] font-extrabold">
+            🌟 آواز سے فوری لاگ ان (Voice Login)
+          </p>
+          <p className="text-sm text-[#102A43] urdu-text leading-relaxed">
+            {step === 'otp' ? (
+              <>
+                مائیک دبائیں اور بولیں:
+                <br />
+                <strong className="text-[#078747]">
+                  &ldquo;میرا او ٹی پی کوڈ 123456 ہے&rdquo;
+                </strong>
+              </>
+            ) : (
+              <>
+                مائیک دبائیں اور بولیں:
+                <br />
+                <strong className="text-[#078747]">
+                  &ldquo;لاگ ان کرو، نمبر 03001234567 ہے&rdquo;
+                </strong>
+              </>
+            )}
+          </p>
 
+          <div className="flex justify-center pt-2">
+            <VoiceButton
+              onStart={startRecording}
+              onStop={stopAndProcessAudio}
+              isRecording={isRecording}
+              disabled={isProcessing}
+            />
+          </div>
+          <p className="text-[11px] text-[#62758A]">
+            {isRecording
+              ? `🎤 ریکارڈ ہو رہا ہے (${recordingDuration}s)... مکمل کر کے دوبارہ دبائیں`
+              : isProcessing
+              ? '⏳ آواز کا تجزیہ ہو رہا ہے (Whisper)...'
+              : step === 'otp'
+              ? 'مائیک دبا کر اپنا OTP کوڈ بولیں'
+              : 'مائیک دبا کر اپنا نمبر بولیں'}
+          </p>
+        </div>
+
+        <div className="relative flex py-1 items-center">
+          <div className="flex-grow border-t border-[#E2EAF0]"></div>
+          <span className="flex-shrink mx-4 text-xs text-[#829AB1] uppercase font-semibold">
+            یا کی پیڈ سے درج کریں
+          </span>
+          <div className="flex-grow border-t border-[#E2EAF0]"></div>
+        </div>
+
+        {/* ── Option B: Manual Input (Fallback Keypad) ── */}
         {step === 'phone' ? (
-          <>
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-full bg-green-500/20 flex items-center justify-center">
-                <HiPhone className="text-green-400 text-lg" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold">فون نمبر</h2>
-                <p className="text-slate-500 text-xs">Phone Number</p>
-              </div>
+          <form onSubmit={handleSendOtp} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-[#102A43] mb-2 urdu-text">
+                موبائل فون نمبر (Mobile Phone Number):
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setManualPhone(e.target.value.replace(/[^\d+]/g, ''))}
+                placeholder="03001234567"
+                maxLength={13}
+                className="w-full bg-[#F8FAFC] border border-[#E2EAF0] rounded-2xl px-4 py-3.5 text-lg text-[#102A43] placeholder-[#829AB1] focus:outline-none focus:border-[#078747] focus:bg-white text-center tracking-widest transition"
+                dir="ltr"
+                autoFocus
+              />
             </div>
 
-            <input
-              id="phone-input"
-              type="tel"
-              value={phone}
-              onChange={(e) => {
-                setPhone(e.target.value.replace(/\D/g, ''));
-                setError('');
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && phone.length === 11 && handleSendOtp()}
-              placeholder="03001234567"
-              maxLength={11}
-              className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-4 text-xl text-center tracking-widest focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
-              dir="ltr"
-              autoFocus
-            />
-
             <button
-              id="send-otp-btn"
-              onClick={handleSendOtp}
-              disabled={loading || phone.length !== 11}
-              className="w-full mt-4 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white py-4 rounded-xl text-lg font-semibold flex items-center justify-center gap-2 transition-all active:scale-98"
+              type="submit"
+              disabled={loading || phone.length < 10}
+              className="w-full py-4 bg-[#078747] hover:bg-[#056B3B] disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded-2xl shadow-sm transition text-base flex items-center justify-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
-                <><span className="urdu-text">OTP بھیجیں</span> <HiArrowRight /></>
+                <>
+                  <span className="urdu-text">OTP کوڈ بھیجیں</span>
+                  <span>➤</span>
+                </>
               )}
             </button>
-
-            {/* Voice login hint */}
-            <button
-              onClick={startListening}
-              className="w-full mt-3 flex items-center justify-center gap-2 text-slate-400 hover:text-green-400 text-sm py-2 transition-colors"
-            >
-              <HiMicrophone className="text-lg" />
-              <span className="urdu-text">آواز سے لاگ ان کریں</span>
-            </button>
-          </>
+          </form>
         ) : (
-          <>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-amber-500/20 flex items-center justify-center">
-                <HiKey className="text-amber-400 text-lg" />
+          <form onSubmit={handleVerifyOtp} className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-[#102A43] urdu-text">
+                  OTP کوڈ درج کریں:
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAwaitingOtp(false, '');
+                    setOverridePhoneStep(true);
+                  }}
+                  className="text-xs text-[#078747] font-semibold hover:underline cursor-pointer"
+                >
+                  نمبر تبدیل کریں
+                </button>
               </div>
-              <div>
-                <h2 className="text-lg font-semibold urdu-text">OTP درج کریں</h2>
-                <p className="text-slate-500 text-xs">Enter OTP</p>
-              </div>
+              <p className="text-xs text-[#62758A] mb-2">
+                کوڈ بھیجا گیا: <strong className="text-[#102A43]">{phone}</strong>
+              </p>
+              <input
+                type="tel"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                maxLength={6}
+                className="w-full bg-[#F8FAFC] border border-[#E2EAF0] rounded-2xl px-4 py-3.5 text-2xl text-[#102A43] placeholder-[#829AB1] focus:outline-none focus:border-[#078747] focus:bg-white text-center tracking-[0.4em] transition"
+                dir="ltr"
+                autoFocus
+              />
             </div>
 
-            <p className="text-slate-400 text-sm mb-4 urdu-text">{phone} پر بھیجا گیا</p>
-
-            <input
-              id="otp-input"
-              type="tel"
-              value={otp}
-              onChange={(e) => {
-                setOtp(e.target.value.replace(/\D/g, ''));
-                setError('');
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && otp.length === 6 && handleVerifyOtp()}
-              placeholder="000000"
-              maxLength={6}
-              className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-4 text-2xl text-center tracking-[0.5em] focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
-              dir="ltr"
-              autoFocus
-            />
-
             <button
-              id="verify-otp-btn"
-              onClick={handleVerifyOtp}
-              disabled={loading || otp.length !== 6}
-              className="w-full mt-4 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white py-4 rounded-xl text-lg font-semibold flex items-center justify-center gap-2 transition-all"
+              type="submit"
+              disabled={loading || otp.length < 4}
+              className="w-full py-4 bg-[#078747] hover:bg-[#056B3B] disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded-2xl shadow-sm transition text-base flex items-center justify-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
-                <><span className="urdu-text">لاگ ان</span> <HiArrowRight /></>
+                <>
+                  <span className="urdu-text">لاگ ان مکمل کریں</span>
+                  <span>✅</span>
+                </>
               )}
             </button>
 
-            {/* Resend OTP */}
-            <div className="flex items-center justify-between mt-3">
+            <div className="text-center pt-1">
               <button
-                onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
-                className="text-slate-400 hover:text-white text-sm py-2 transition-colors urdu-text"
-              >
-                ← نمبر بدلیں
-              </button>
-              <button
-                onClick={handleResendOtp}
+                type="button"
                 disabled={resendCooldown > 0 || loading}
-                className="text-sm py-2 transition-colors disabled:text-slate-600 text-green-400 hover:text-green-300 urdu-text"
+                onClick={handleSendOtp}
+                className="text-xs text-[#62758A] hover:text-[#078747] disabled:text-slate-400 transition cursor-pointer font-medium"
               >
-                {resendCooldown > 0 ? `دوبارہ بھیجیں (${resendCooldown}s)` : 'دوبارہ بھیجیں'}
+                {resendCooldown > 0
+                  ? `دوبارہ بھیجیں (${resendCooldown}s)`
+                  : 'دوبارہ OTP کوڈ بھیجیں'}
               </button>
             </div>
-          </>
+          </form>
         )}
 
-        {/* Error display */}
+        {/* Error message */}
         {error && (
-          <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20 animate-slide-in">
-            <p className="text-red-400 text-sm text-center urdu-text">❌ {error}</p>
+          <div className="p-3 bg-red-950/60 border border-red-800 rounded-xl text-red-200 text-xs text-center">
+            {error}
           </div>
         )}
       </div>
-
-      {/* Dev hint */}
-      <p className="mt-6 text-slate-600 text-xs text-center">
-        💡 OTP appears in backend console logs (dev mode)
-      </p>
     </div>
   );
 }
+
+export default LoginPage;

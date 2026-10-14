@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { HiBell, HiCheckCircle, HiInformationCircle, HiExclamationTriangle } from 'react-icons/hi2';
+import { useState } from 'react';
+import { HiBell } from 'react-icons/hi2';
 
 // Mock notifications — replace with real API call when backend notification endpoint is ready
 const MOCK_NOTIFICATIONS = [

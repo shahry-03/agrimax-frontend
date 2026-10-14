@@ -11,13 +11,13 @@ import ProfilePage from './pages/ProfilePage';
 import NotificationsPage from './pages/NotificationsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import useAuthStore from './store/useAuthStore';
-import { useState, useEffect } from 'react';
+import useAppStore from './store/useAppStore';
+import { useState } from 'react';
 
 export default function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated } = useAppStore();
 
-  // Use sessionStorage so splash only shows once per browser session (not every hot-reload)
+  // Splash screen shown once per session
   const [showSplash, setShowSplash] = useState(
     () => !sessionStorage.getItem('agrimax_splash_seen')
   );
@@ -45,21 +45,26 @@ export default function App() {
         }}
       />
       <Routes>
-        {/* Public route — redirect to home if already logged in */}
+        {/* Public login page — redirects to home if already logged in */}
         <Route
           path="/login"
           element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
         />
 
-        {/* Protected routes — all inside MainLayout */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/prices" element={<PricesPage />} />
-            <Route path="/marketplace" element={<MarketplacePage />} />
+        {/* Main Application Routes inside MainLayout */}
+        <Route element={<MainLayout />}>
+          {/* Public Home Voice Assistant — anyone can ask crop prices, voice queries, or login via voice */}
+          <Route path="/" element={<HomePage />} />
+          <Route path="/prices" element={<PricesPage />} />
+          <Route path="/marketplace" element={<MarketplacePage />} />
+          <Route path="/my-posts" element={<MarketplacePage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/settings" element={<ProfilePage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+
+          {/* Wallet requires authentication */}
+          <Route element={<ProtectedRoute />}>
             <Route path="/wallet" element={<WalletPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
         </Route>
 
