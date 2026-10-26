@@ -1,11 +1,23 @@
 import useAppStore from '../store/useAppStore';
 import useSpeech from '../hooks/useSpeech';
+import AIContextRenderer, { BdiSpan } from './AIContextRenderer';
+import { 
+  HiMicrophone, 
+  HiSpeakerWave, 
+  HiOutlineSparkles,
+  HiOutlineGlobeAlt 
+} from 'react-icons/hi2';
 
 /**
- * ChatBubble — Displays user voice transcripts and AgriMax bilingual AI responses.
- * Includes intent badges, audio replay button (🔊), and structured data cards.
+ * ChatBubble — Premium Industry Standard Chat Interface.
+ * Features:
+ * - Gradient User Bubbles with right-aligned avatars
+ * - Glassmorphic AI Bubbles with layered shadows
+ * - Structured Layout (Header, Body, Context, Footer)
+ * - Advanced Micro-interactions (Hover states, Listen button)
+ * - Robust RTL/LTR Typography for Urdu/English
  */
-export function ChatBubble({ message }) {
+export function ChatBubble({ message, onSelectAction }) {
   const { language } = useAppStore();
   const { speak } = useSpeech();
 
@@ -28,26 +40,33 @@ export function ChatBubble({ message }) {
       })
     : '';
 
+  // ────────────────────────────────────────────────────────
+  // ── USER MESSAGE BUBBLE ──
+  // ────────────────────────────────────────────────────────
   if (isUser) {
     return (
-      <div className="flex items-end justify-end gap-2 mb-4 animate-fade-up">
-        <div className="max-w-[85%] sm:max-w-[75%] bg-green-700/80 text-white rounded-2xl rounded-br-sm px-4 py-3 shadow-md border border-green-600/40">
-          <p className="text-base sm:text-lg font-medium leading-relaxed">
-            &ldquo;{message.text}&rdquo;
+      <div className="flex items-end justify-end gap-2.5 mb-5 animate-fade-up min-w-0">
+        <div className="max-w-[85%] sm:max-w-[75%] bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-2xl rounded-br-sm px-4 py-3 shadow-md shadow-emerald-900/10 break-words relative group">
+          <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">
+            {message.text}
           </p>
-          <div className="flex items-center justify-end gap-2 mt-1.5 text-green-200/80 text-[11px]">
-            <span>{formattedTime}</span>
-            <span>🎤</span>
+          <div className="flex items-center justify-end gap-1.5 mt-1.5 text-emerald-100/80 text-[10px] font-medium">
+            <BdiSpan>{formattedTime}</BdiSpan>
+            <HiMicrophone className="text-xs" />
           </div>
         </div>
-        <div className="w-8 h-8 rounded-full bg-green-900/60 border border-green-500/30 flex items-center justify-center text-sm shadow">
+        
+        {/* User Avatar */}
+        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-sm shadow-sm shrink-0 select-none">
           👨‍🌾
         </div>
       </div>
     );
   }
 
-  // Assistant Bubble
+  // ────────────────────────────────────────────────────────
+  // ── ASSISTANT (AI) MESSAGE BUBBLE ──
+  // ────────────────────────────────────────────────────────
   const {
     messageEn,
     messageUr,
@@ -59,131 +78,100 @@ export function ChatBubble({ message }) {
   } = message;
 
   return (
-    <div className="flex items-start gap-2 mb-4 animate-fade-up">
-      <div className="w-9 h-9 rounded-full bg-amber-600/30 border border-amber-500/40 flex items-center justify-center text-lg shadow shrink-0">
+    <div className="flex items-start gap-2.5 mb-5 animate-fade-up min-w-0">
+      {/* AI Avatar */}
+      <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200/60 text-emerald-700 flex items-center justify-center text-sm shadow-sm shrink-0 select-none mt-0.5">
         🌾
       </div>
 
-      <div className="max-w-[88%] sm:max-w-[80%] bg-slate-800/90 text-slate-100 rounded-2xl rounded-tl-sm p-4 shadow-lg border border-slate-700/60 space-y-3">
-        {/* Urdu Response */}
-        {messageUr && (
-          <div className="border-b border-slate-700/50 pb-2">
-            <p className="urdu-text text-lg sm:text-xl font-medium leading-relaxed text-emerald-300">
-              {messageUr}
+      <div className="max-w-[92%] sm:max-w-[82%] bg-white text-slate-800 rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-3 min-w-0 flex-1 relative group hover:shadow-md transition-shadow duration-300">
+        
+        {/* ── 1. Message Body (Bilingual) ── */}
+        <div className="space-y-2.5">
+          {/* Urdu Response */}
+          {messageUr && (
+            <div className={`${messageEn ? 'border-b border-slate-100 pb-2.5' : ''}`}>
+              <p 
+                className="urdu-text text-[15px] sm:text-base font-medium leading-[2] text-slate-800 text-right" 
+                dir="rtl"
+              >
+                {messageUr}
+              </p>
+            </div>
+          )}
+
+          {/* English Response */}
+          {messageEn && (
+            <p 
+              className="text-slate-600 text-[13px] sm:text-sm font-medium leading-relaxed" 
+              dir="ltr"
+            >
+              {messageEn}
             </p>
+          )}
+        </div>
+
+        {/* ── 2. Structured Contextual Result Cards ── */}
+        {result && (
+          <div className="mt-3 pt-3 border-t border-slate-100 min-w-0">
+            <AIContextRenderer
+              intent={intent}
+              result={result}
+              onSelectAction={onSelectAction}
+              language={language}
+            />
           </div>
         )}
 
-        {/* English Response */}
-        {messageEn && (
-          <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-            {messageEn}
-          </p>
-        )}
-
-        {/* Structured Result Cards */}
-        {result && typeof result === 'object' && (
-          <div className="mt-2 bg-slate-900/70 rounded-xl p-3 border border-slate-700/80 text-xs sm:text-sm">
-            {/* GET_CROP_PRICE card */}
-            {intent === 'GET_CROP_PRICE' && result.avgPrice && (
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center text-green-400 font-semibold">
-                  <span className="urdu-text text-base">اوسط قیمت:</span>
-                  <span className="text-base font-bold">₨ {Number(result.avgPrice).toLocaleString()} / {result.unit || 'kg'}</span>
-                </div>
-                <div className="flex justify-between text-slate-400 text-xs">
-                  <span>کم از کم: ₨ {Number(result.minPrice).toLocaleString()}</span>
-                  <span>زیادہ سے زیادہ: ₨ {Number(result.maxPrice).toLocaleString()}</span>
-                </div>
-                {result.market && (
-                  <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
-                    📍 {result.market}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* VIEW_WALLET card */}
-            {intent === 'VIEW_WALLET' && result.balance !== undefined && (
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-xs urdu-text">موجودہ بیلنس</p>
-                  <p className="text-xl font-bold text-green-400">
-                    ₨ {Number(result.balance).toLocaleString('en-PK')}
-                  </p>
-                </div>
-                <span className="text-2xl">💰</span>
-              </div>
-            )}
-
-            {/* CREATE_SELL_POST card */}
-            {intent === 'CREATE_SELL_POST' && result.postId && (
-              <div className="space-y-1">
-                <p className="text-green-400 font-semibold flex items-center gap-1">
-                  <span>✅</span> <span>پوسٹ کامیابی سے بن گئی!</span>
-                </p>
-                <p className="text-slate-300">
-                  {result.quantity} {result.unit} {result.cropUr || result.crop} — ₨ {Number(result.askingPrice).toLocaleString()}
-                </p>
-              </div>
-            )}
-
-            {/* Default key-value pairs if other structured result */}
-            {intent !== 'GET_CROP_PRICE' &&
-              intent !== 'VIEW_WALLET' &&
-              intent !== 'CREATE_SELL_POST' &&
-              intent !== 'VERIFY_OTP' &&
-              !Array.isArray(result) && (
-                <div className="space-y-1">
-                  {Object.entries(result)
-                    .slice(0, 4)
-                    .map(([k, v]) => (
-                      <div key={k} className="flex justify-between text-xs">
-                        <span className="text-slate-400 capitalize">{k}:</span>
-                        <span className="text-slate-200 font-medium">{String(v)}</span>
-                      </div>
-                    ))}
-                </div>
-              )}
-          </div>
-        )}
-
-        {/* Footer: Intent badge, Replay Audio button, Timestamp */}
-        <div className="flex items-center justify-between pt-1 border-t border-slate-700/40 text-[11px] text-slate-400">
+        {/* ── 3. Footer: Meta-data & Actions ── */}
+        <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-slate-100 text-[10px] text-slate-400 gap-2 flex-wrap">
+          
+          {/* Left Side: Badges & Tags */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {detectedLanguage && (
-              <span className="bg-slate-700/60 px-1.5 py-0.5 rounded-full text-[10px] text-blue-300 font-mono">
-                🌐 {detectedLanguage}
+              <span className="bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md text-[10px] text-slate-500 font-medium flex items-center gap-1">
+                <HiOutlineGlobeAlt className="text-xs" />
+                {detectedLanguage}
               </span>
             )}
+            
             {intent && (
-              <span className="bg-slate-700/60 px-2 py-0.5 rounded-full text-[10px] text-emerald-400 font-medium">
-                {intent}
+              <span className="bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md text-[10px] text-emerald-700 font-bold tracking-wide uppercase flex items-center gap-1">
+                <HiOutlineSparkles className="text-xs" />
+                {intent.replace(/_/g, ' ')}
               </span>
             )}
+            
             {confidence && (
-              <span className="text-[10px] text-slate-500">
-                {Math.round(confidence * 100)}%
+              <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">
+                <BdiSpan>{Math.round(confidence * 100)}% Match</BdiSpan>
               </span>
             )}
+
             {success === false && (
-              <span className="bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded-full text-[10px]">
-                ⚠️ توجہ طلب
+              <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                ⚠️ {language === 'ur' ? 'توجہ طلب' : 'Action Required'}
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Right Side: Replay Audio & Timestamp */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             <button
               type="button"
               onClick={handleReplayAudio}
-              className="flex items-center gap-1 text-slate-300 hover:text-green-400 transition-colors p-1 rounded-md hover:bg-slate-700/50 cursor-pointer"
+              className="flex items-center gap-1.5 text-slate-500 hover:text-emerald-600 transition-colors px-2 py-1 rounded-lg hover:bg-emerald-50 cursor-pointer group/listen"
               title="آواز دوبارہ سنیں / Listen again"
             >
-              <span className="text-sm">🔊</span>
-              <span className="text-[10px]">سنیں</span>
+              <HiSpeakerWave className="text-sm group-hover/listen:scale-110 transition-transform" />
+              <span className="text-[11px] font-semibold">{language === 'ur' ? 'سنیں' : 'Listen'}</span>
             </button>
-            <span>{formattedTime}</span>
+            
+            <span className="w-1 h-1 rounded-full bg-slate-300" /> {/* Divider */}
+            
+            <BdiSpan className="font-semibold text-slate-400 text-[11px]">
+              {formattedTime}
+            </BdiSpan>
           </div>
         </div>
       </div>

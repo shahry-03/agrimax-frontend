@@ -16,6 +16,7 @@
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.6.0",
     "react-router-dom": "^7.14.2",
+    "web-vitals": "^6.2.3",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

@@ -1,18 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   HiShoppingBag,
   HiChartBar,
   HiWallet,
   HiUser,
+  HiMicrophone,
+  HiHome,
+  HiXMark,
 } from 'react-icons/hi2';
 import useChatStore from '../store/useChatStore';
 import Header from '../components/layout/Header';
 import Sidebar from '../components/layout/Sidebar';
 import AIChatPanel from '../components/AIChatPanel';
+import VoiceAssistant from '../components/voice/VoiceAssistant';
 
 const MOBILE_NAV_ITEMS = [
-  { path: '/', icon: null, labelUr: 'صوتی معاون', labelEn: 'Voice AI', isVoice: true },
+  { path: '/', icon: HiHome, labelUr: 'ہوم', labelEn: 'Home' },
   { path: '/marketplace', icon: HiShoppingBag, labelUr: 'مارکیٹ', labelEn: 'Market' },
   { path: '/prices', icon: HiChartBar, labelUr: 'قیمتیں', labelEn: 'Prices' },
   { path: '/wallet', icon: HiWallet, labelUr: 'والیٹ', labelEn: 'Wallet' },
@@ -22,125 +26,171 @@ const MOBILE_NAV_ITEMS = [
 export function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { language, isOpen, setOpen } = useChatStore();
+  const { language, isOpen, setOpen, isRecording, isProcessing } = useChatStore();
   const isHomePage = location.pathname === '/';
 
-  // Responsive state for mobile/tablet
+  // 1. Advanced Responsive State (using matchMedia for better performance)
   const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 1024 : false
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false
   );
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 1024);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const mediaQuery = window.matchMedia('(max-width: 1023px)');
+    const handleChange = (e) => setIsMobile(e.matches);
+    
+    // Add listener
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  // Sync document dir attribute with language
+  // 2. Sync document dir & lang with Zustand language state
   useEffect(() => {
     document.documentElement.dir = language === 'ur' ? 'rtl' : 'ltr';
     document.documentElement.lang = language;
   }, [language]);
 
+  // 3. Industry Standard: Body Scroll Lock when Drawer is Open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      // Prevent layout shift when scrollbar disappears
+      document.body.style.paddingRight = 'var(--scrollbar-width, 0px)'; 
+    } else {
+      document.body.style.overflow = 'unset';
+      document.body.style.paddingRight = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.body.style.paddingRight = 'unset';
+    };
+  }, [isOpen]);
+
+  // Close drawer handler
+  const handleCloseDrawer = useCallback(() => setOpen(false), [setOpen]);
+
   return (
-    <div className="min-h-screen bg-[#F7FAF8] text-[#102A43] flex flex-col font-sans selection:bg-[#078747] selection:text-white">
-      {/* ── Global Top Header Spanning the Application ── */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-emerald-600 selection:text-white antialiased">
+      
+      {/* ── Global Top Header ── */}
       <Header />
 
-      {/* ── Main Layout Body: Fixed Left Sidebar (240px) + Flexible Main Workspace (minmax(0, 1fr)) ── */}
-      <div className="flex-1 max-w-[1536px] mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex lg:grid lg:grid-cols-[240px_minmax(0,1fr)] gap-6 w-full items-start">
-          {/* Desktop Left Navigation Sidebar (240px, sticky top-24) */}
-          <div className="hidden lg:block shrink-0 w-[240px] sticky top-24">
+      {/* ── Main Layout Body ── */}
+      <div className="flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8">
+        <div className="flex lg:grid lg:grid-cols-[260px_minmax(0,1fr)] gap-6 lg:gap-10 w-full items-start">
+          
+          {/* Desktop Left Navigation Sidebar (Sticky) */}
+          <div className="hidden lg:block shrink-0 w-[260px] sticky top-[72px] h-[calc(100vh-72px)] pt-6">
             <Sidebar />
           </div>
 
           {/* Flexible Main Workspace Outlet */}
-          <main className="flex-1 min-w-0 py-4 sm:py-5 lg:py-6 pb-24 lg:pb-10">
+          <main className="flex-1 min-w-0 py-6 lg:py-8 pb-28 lg:pb-12">
             <Outlet />
           </main>
         </div>
       </div>
 
-      {/* ── Persistent Slide-Over Drawer for Secondary Routes (/marketplace, /wallet, /prices, etc.) ──
-          On HomePage, the AI Chat Panel is embedded directly in the visual hierarchy.
-          On other pages, opening AI assistant slides out an overlay panel so the page grid is preserved.
-      ── */}
-      {!isHomePage && isOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end animate-fade-in">
-          {/* Backdrop */}
+      {/* ═══════════════════════════════════════════════════════════
+          DESKTOP DRAWER (Slide-over for Secondary Routes)
+          ═══════════════════════════════════════════════════════════ */}
+      {!isHomePage && isOpen && !isMobile && (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          {/* Backdrop with blur */}
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-2xs transition-opacity"
-            onClick={() => setOpen(false)}
+            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm transition-opacity duration-300 animate-fade-in"
+            onClick={handleCloseDrawer}
           />
 
-          {/* Slide-over panel */}
-          <div className="relative z-10 w-full sm:w-[420px] max-w-full h-full bg-white shadow-2xl animate-slide-left">
-            <AIChatPanel isDrawer onClose={() => setOpen(false)} />
+          {/* Slide-over Panel */}
+          <div className="relative z-10 w-full sm:w-[450px] max-w-full h-full bg-white shadow-2xl animate-slide-left flex flex-col border-l border-slate-200">
+            {/* Custom Close Button for Desktop Drawer */}
+            <div className="absolute top-4 left-4 z-50">
+              <button 
+                onClick={handleCloseDrawer}
+                className="p-2 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-500 rounded-full transition-colors backdrop-blur-md"
+              >
+                <HiXMark className="text-xl" />
+              </button>
+            </div>
+            <AIChatPanel isDrawer onClose={handleCloseDrawer} />
           </div>
         </div>
       )}
 
-      {/* ── Mobile Slide-Up Drawer (<1024px) for Voice Tab ── */}
-      {isMobile && isHomePage && isOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end animate-fade-in">
+      {/* ═══════════════════════════════════════════════════════════
+          MOBILE DRAWER (Slide-up Bottom Sheet)
+          ═══════════════════════════════════════════════════════════ */}
+      {isMobile && isOpen && (
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+          {/* Backdrop with blur */}
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-2xs"
-            onClick={() => setOpen(false)}
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-300 animate-fade-in"
+            onClick={handleCloseDrawer}
           />
-          <div className="relative z-10 w-full max-h-[85vh] bg-white rounded-t-3xl shadow-2xl overflow-hidden animate-slide-up">
-            <AIChatPanel isDrawer onClose={() => setOpen(false)} />
+
+          {/* Bottom Sheet Panel */}
+          <div className="relative z-10 w-full max-h-[90vh] bg-white rounded-t-[2rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col border-t border-slate-200">
+            {/* iOS-Style Drag Handle */}
+            <div className="w-full flex justify-center py-3 bg-white cursor-pointer" onClick={handleCloseDrawer}>
+               <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
+            </div>
+            <AIChatPanel isDrawer onClose={handleCloseDrawer} />
           </div>
         </div>
       )}
 
-      {/* ── Bottom Mobile Navigation Bar (visible <1024px) ── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-[#E2EAF0] py-1.5 px-3 shadow-lg">
-        <div className="max-w-md mx-auto flex items-center justify-around">
+      {/* ═══════════════════════════════════════════════════════════
+          MOBILE BOTTOM NAVIGATION BAR 
+          ═══════════════════════════════════════════════════════════ */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/85 backdrop-blur-xl border-t border-slate-200/80 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] pb-safe">
+        <div className="max-w-md mx-auto flex items-center justify-around px-2 h-16">
           {MOBILE_NAV_ITEMS.map((item) => {
-            const isActive = location.pathname === item.path && !item.isVoice;
+            const isActive = location.pathname === item.path;
             const Icon = item.icon;
 
             return (
               <button
                 key={item.path}
                 type="button"
-                onClick={() => {
-                  if (item.isVoice) {
-                    setOpen(true);
-                  } else {
-                    navigate(item.path);
-                  }
-                }}
-                className={`relative flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all cursor-pointer ${
-                  isActive
-                    ? 'text-[#078747] font-bold'
-                    : 'text-[#62758A] hover:text-[#102A43]'
+                onClick={() => navigate(item.path)}
+                className={`relative flex flex-col items-center justify-center w-16 h-full gap-1 transition-all duration-300 ${
+                  isActive ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
-                {item.isVoice ? (
-                  <div className="w-11 h-11 -mt-4 rounded-full flex items-center justify-center text-xl shadow-md transition-transform bg-[#078747] text-white ring-4 ring-white shadow-green-900/30">
-                    <span>🎤</span>
-                  </div>
-                ) : (
-                  <Icon className="text-xl" />
-                )}
-
-                <span className="text-[10px] mt-0.5 truncate max-w-[55px]">
+                <Icon className={`text-[22px] transition-transform duration-300 ${isActive ? 'scale-110' : ''}`} />
+                <span className={`text-[10px] font-semibold truncate max-w-full ${isActive ? 'font-bold' : ''}`}>
                   {language === 'ur' ? item.labelUr : item.labelEn}
                 </span>
-
+                {/* Active Dot */}
                 {isActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#078747] mt-0.5" />
+                  <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-scale-in" />
                 )}
               </button>
             );
           })}
+
+          {/* Center Floating Voice Action Button */}
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className={`relative flex items-center justify-center w-14 h-14 -mt-8 rounded-full shadow-lg shadow-emerald-600/30 transition-all duration-300 ${
+              isRecording 
+                ? 'bg-red-500 animate-pulse ring-4 ring-red-500/20' 
+                : isProcessing 
+                ? 'bg-amber-500 ring-4 ring-amber-500/20'
+                : 'bg-gradient-to-br from-emerald-500 to-emerald-700 hover:scale-105 active:scale-95 ring-4 ring-white'
+            }`}
+          >
+            <HiMicrophone className="text-2xl text-white" />
+          </button>
         </div>
       </nav>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FLOATING VOICE ASSISTANT (Only on non-home pages & when drawer is closed)
+          ═══════════════════════════════════════════════════════════ */}
+      {!isHomePage && !isOpen && <VoiceAssistant />}
+      
     </div>
   );
 }

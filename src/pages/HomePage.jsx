@@ -1,113 +1,187 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import useChatStore from '../store/useChatStore';
 import useVoice from '../hooks/useVoice';
+
+// Components
 import HeroSection from '../components/dashboard/HeroSection';
+import CentralVoiceBar from '../components/dashboard/CentralVoiceBar';
+import QuickActions from '../components/dashboard/QuickActions';
 import AIChatPanel from '../components/AIChatPanel';
 import MarketPriceWidget from '../components/dashboard/MarketPriceWidget';
-import QuickActions from '../components/dashboard/QuickActions';
 import FarmerGrowthCard from '../components/dashboard/FarmerGrowthCard';
 import FeatureStrip from '../components/dashboard/FeatureStrip';
 
+import { HiOutlineShieldCheck, HiMicrophone } from 'react-icons/hi2';
+
 export function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // ── Store state (optimized with useShallow) ──
   const {
     language,
     isRecording,
     isProcessing,
     awaitingOtp,
     pendingPhone,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((state) => ({
+      language: state.language,
+      isRecording: state.isRecording,
+      isProcessing: state.isProcessing,
+      awaitingOtp: state.awaitingOtp,
+      pendingPhone: state.pendingPhone,
+    }))
+  );
 
-  const { startRecording, stopAndProcessAudio } = useVoice();
+  // ── Voice hook: SINGLE call, all handlers destructured once ──
+  const { startRecording, stopAndProcessAudio, processCommand } = useVoice();
 
-  const handleStartVoice = async () => {
-    if (isProcessing) return;
-    if (isRecording) {
-      const hint = language === 'ur' ? 'ur' : language === 'en' ? 'en' : undefined;
-      await stopAndProcessAudio(hint);
-    } else {
-      await startRecording();
-    }
-  };
+  const isUrdu = language === 'ur';
 
-  // Scroll to top on mount
+  // ── Consume auto-command from navigation state (fires exactly once) ──
+  const hasConsumedAutoCmdRef = useRef(false);
+
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const cmd = location.state?.autoVoiceCommand;
+
+    // Guard: no command, or already consumed
+    if (!cmd || hasConsumedAutoCmdRef.current) return;
+
+    // Mark consumed IMMEDIATELY (before async work)
+    hasConsumedAutoCmdRef.current = true;
+
+    // Fire-and-forget. Internal useVoice error handling surfaces to UI.
+    processCommand(cmd).catch((err) => {
+      console.error('[HomePage] Auto voice command failed:', err);
+    });
+
+    // Clear navigation state so a browser refresh doesn't re-trigger.
+    // Use React Router's navigate (NOT history.replaceState — that breaks RR v7).
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, processCommand, navigate]);
+
+  // ── Handlers (memoized) ──
+  const handleStartVoice = useCallback(async () => {
+    if (isProcessing) return;
+    try {
+      if (isRecording) {
+        const hint = language === 'ur' ? 'ur' : language === 'en' ? 'en' : undefined;
+        await stopAndProcessAudio(hint);
+      } else {
+        await startRecording();
+      }
+    } catch (err) {
+      console.error('[HomePage] Voice action failed:', err);
+    }
+  }, [isProcessing, isRecording, language, stopAndProcessAudio, startRecording]);
+
+  const handleActionQuery = useCallback(
+    async (queryText) => {
+      if (isProcessing || !queryText?.trim()) return;
+      try {
+        await processCommand(queryText.trim());
+      } catch (err) {
+        console.error('[HomePage] Action query failed:', err);
+      }
+    },
+    [isProcessing, processCommand]
+  );
+
+  const handleSelectCrop = useCallback(() => {
+    navigate('/prices');
+  }, [navigate]);
+
+  // ── Scroll to top on mount ──
+  useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    } catch {
+      /* ignore — some environments don't support scrollTo */
+    }
   }, []);
 
   return (
-    <div className="space-y-6 animate-fade-up w-full min-w-0">
+    <div className="w-full min-w-0 pb-10" dir={isUrdu ? 'rtl' : 'ltr'}>
       {/* ── Multi-turn OTP Alert Banner ── */}
       {awaitingOtp && (
-        <div className="bg-[#FEF3C7] border border-[#FCD34D] p-4 rounded-2xl flex items-center justify-between shadow-xs animate-pulse">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🔐</span>
+        <div
+          role="alert"
+          aria-live="polite"
+          className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm motion-safe:animate-fade-up relative overflow-hidden"
+        >
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-center gap-3.5 relative z-10">
+            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 border border-amber-200 shadow-sm">
+              <HiOutlineShieldCheck className="text-amber-600 text-xl animate-pulse" />
+            </div>
             <div>
-              <p className="text-[#92400E] font-bold text-sm sm:text-base">
-                {language === 'ur'
-                  ? 'لاگ ان کے لیے مائیک دبا کر OTP بولیں یا چیٹ میں لکھیں'
-                  : 'Speak or type your OTP below to complete login'}
+              <p className="text-amber-900 font-extrabold text-sm sm:text-base leading-tight">
+                {isUrdu ? 'لاگ ان کی تصدیق باقی ہے' : 'Authentication Required'}
               </p>
-              <p className="text-[#B45309] text-xs">
-                {pendingPhone
-                  ? `${language === 'ur' ? 'فون نمبر:' : 'Phone:'} ${pendingPhone}`
-                  : ''}
+              <p className="text-amber-700 text-xs sm:text-sm font-medium mt-1">
+                {isUrdu
+                  ? 'مائیک دبا کر اپنا OTP کوڈ بولیں یا چیٹ میں لکھیں۔'
+                  : 'Speak or type your OTP below to complete secure login.'}
+                {pendingPhone && (
+                  <span className="block mt-0.5 font-mono text-amber-600" dir="ltr">
+                    {pendingPhone}
+                  </span>
+                )}
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={handleStartVoice}
-            className="px-3.5 py-1.5 bg-[#D97706] hover:bg-[#B45309] text-white text-xs font-bold rounded-xl transition cursor-pointer"
+            className="w-full sm:w-auto px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold rounded-xl transition-all shadow-md shadow-amber-500/20 active:scale-95 flex items-center justify-center gap-2 relative z-10 shrink-0"
           >
-            {language === 'ur' ? 'OTP بولیں 🎤' : 'Speak OTP 🎤'}
+            <HiMicrophone className="text-base" />
+            {isUrdu ? 'OTP بولیں' : 'Speak OTP'}
           </button>
         </div>
       )}
 
-      {/* ── Main Dashboard Workspace ──
-          At ultra-wide widths (>=1536px), layout supports 2 tracks (Main + Side cards).
-          At standard desktop widths (1200–1440px, e.g. 1280x720, 1366x768), information cards move below the chat
-          to guarantee that both the Hero and the AI Assistant have ample, un-cramped width.
-      ── */}
-      <div className="2xl:grid 2xl:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start w-full">
-        {/* ── Primary Column: 1. Hero Banner + 2. AI Assistant Panel ── */}
-        <div className="flex flex-col gap-6 min-w-0 w-full">
-          {/* 1. Hero Banner */}
+      {/* ── Main Dashboard Content (Staggered Animation) ── */}
+      <div className="space-y-6 sm:space-y-8 w-full min-w-0">
+        {/* 1. Hero Banner */}
+        <div className="motion-safe:animate-fade-up">
           <HeroSection onStartVoiceChat={handleStartVoice} />
+        </div>
 
-          {/* 2. AI Assistant Panel */}
-          <AIChatPanel />
+        {/* 2. Central Voice & Text Interaction Bar */}
+        <div className="motion-safe:animate-fade-up [animation-delay:100ms]">
+          <CentralVoiceBar />
+        </div>
 
-          {/* On standard widths (<1536px), show the information cards right below the main workspace */}
-          <div className="2xl:hidden flex flex-col gap-6 w-full pt-1">
-            {/* 3. Market Price and Quick Actions (2-column grid at standard desktop) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-              <MarketPriceWidget onSelectCrop={() => navigate('/prices')} />
-              <QuickActions onStartVoice={handleStartVoice} />
+        {/* 3. Quick Actions Grid */}
+        <div className="motion-safe:animate-fade-up [animation-delay:200ms]">
+          <QuickActions onActionQuery={handleActionQuery} />
+        </div>
+
+        {/* 4. Main Workspace */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 items-start w-full motion-safe:animate-fade-up [animation-delay:300ms]">
+          <div className="xl:col-span-8 min-w-0 w-full">
+            <AIChatPanel />
+          </div>
+
+          <div className="xl:col-span-4 min-w-0 w-full xl:sticky xl:top-24 space-y-6">
+            <MarketPriceWidget onSelectCrop={handleSelectCrop} />
+            <div className="hidden xl:block">
+              <FarmerGrowthCard />
             </div>
-
-            {/* 4. Farmer Growth Promotional Card */}
-            <FarmerGrowthCard />
           </div>
         </div>
 
-        {/* ── Secondary Column (visible at >=1536px wide desktop): 3. Market Info + Quick Actions + 4. Growth Card ── */}
-        <div className="hidden 2xl:flex flex-col gap-5 min-w-0 w-full sticky top-24">
-          {/* 3. Market Price Information */}
-          <MarketPriceWidget onSelectCrop={() => navigate('/prices')} />
-
-          {/* Quick Actions */}
-          <QuickActions onStartVoice={handleStartVoice} />
-
-          {/* 4. Farmer Growth Card */}
-          <FarmerGrowthCard />
+        {/* 5. Platform Features Strip */}
+        <div className="motion-safe:animate-fade-up [animation-delay:400ms]">
+          <FeatureStrip />
         </div>
       </div>
-
-      {/* ── Supporting Information Strip (5 Platform Pillars) ── */}
-      <FeatureStrip />
     </div>
   );
 }

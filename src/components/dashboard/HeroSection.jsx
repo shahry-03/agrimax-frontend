@@ -1,165 +1,90 @@
-import { useState } from 'react';
-import { HiMicrophone, HiPlay, HiXMark } from 'react-icons/hi2';
+import { useNavigate } from 'react-router-dom';
+import { HiMicrophone, HiBuildingStorefront, HiSparkles } from 'react-icons/hi2';
 import useAppStore from '../../store/useAppStore';
 
 export default function HeroSection({ onStartVoiceChat }) {
+  const navigate = useNavigate();
   const { language } = useAppStore();
-  const [showDemoModal, setShowDemoModal] = useState(false);
 
   return (
-    <>
-      <section className="relative rounded-2xl overflow-hidden border border-[#E2EAF0] shadow-2xs bg-white min-h-[230px] sm:min-h-[250px] lg:min-h-[260px] flex items-center">
-        {/* Background Image: Authentic Pakistani Farmer Sunrise Photo */}
-        <div
-          className="absolute inset-0 bg-cover bg-[position:80%_center] lg:bg-[position:85%_center]"
-          style={{
-            backgroundImage: `url('/images/hero-farmer.jpg')`,
-          }}
-          role="img"
-          aria-label="Pakistani farmer in agricultural field at sunrise"
-        />
-
-        {/* Balanced Contrast Gradient Overlay: ensures text readability on left while keeping farmer & sunrise vibrant */}
-        <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/80 via-40% to-transparent lg:via-white/70 lg:via-45%" />
-
-        {/* Hero Content */}
-        <div className="relative z-10 p-5 sm:p-6 lg:p-7 max-w-xl">
-          {/* Eyebrow Pill */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#E8F5E9] text-[#056B3B] border border-[#C8E6C9] text-xs font-bold mb-2 shadow-2xs">
-            <HiMicrophone className="text-sm text-[#078747]" />
-            <span>{language === 'ur' ? 'آواز پر مبنی پلیٹ فارم' : 'Voice First Platform'}</span>
-          </div>
-
-          {/* Main Heading (2 Lines) */}
-          <h1 className="text-xl sm:text-2xl lg:text-[26px] font-black text-[#102A43] tracking-tight leading-[1.25]">
-            {language === 'ur' ? (
-              <span className="urdu-text font-bold leading-normal block">
-                ایگری میکس — کسانوں کو خریداروں سے جوڑنا
-              </span>
-            ) : (
-              <>
-                <span className="text-[#078747]">Agrimax</span> – Connecting
-                <br className="hidden sm:inline" /> Farmers with Buyers
-              </>
-            )}
-          </h1>
-
-          {/* Supporting Subtitle */}
-          <p className="mt-1.5 mb-4 text-xs sm:text-sm text-[#334E68] font-medium leading-relaxed max-w-lg">
-            {language === 'ur' ? (
-              <span className="urdu-text block">
-                بولیں، فصل بیچیں اور منافع کمائیں۔ مصنوعی ذہانت (AI) اور آواز کے ذریعے اپنی فصل کا بہترین ریٹ حاصل کریں — بغیر کسی درمیانی آڑھتی کے۔
-              </span>
-            ) : (
-              'Speak, sell, and grow. Use the power of AI and voice to get better prices for your crops — without unnecessary middlemen.'
-            )}
+    <section className="relative rounded-3xl overflow-hidden border border-slate-200/80 bg-white shadow-sm flex flex-col sm:flex-row items-stretch min-h-[200px] sm:min-h-[220px] transition-all hover:shadow-md">
+      {/* ── Start: Typography & Actions ── */}
+      <div className="flex-1 p-6 sm:p-8 flex flex-col justify-center min-w-0 z-10 max-w-2xl">
+        {/* Eyebrow Badge */}
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 w-fit mb-4">
+          <HiSparkles className="text-emerald-600 text-sm" />
+          <p className="text-[10px] sm:text-xs font-bold text-emerald-700 uppercase tracking-widest">
+            {language === 'ur' ? 'آپ کا زرعی معاون' : 'YOUR FARMING ASSISTANT'}
           </p>
+        </div>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Primary CTA */}
-            <button
-              type="button"
-              onClick={onStartVoiceChat}
-              className="px-4.5 py-2 rounded-xl bg-[#078747] hover:bg-[#056B3B] text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <HiMicrophone className="text-base" />
-              <span>{language === 'ur' ? 'صوتی گفتگو شروع کریں' : 'Start Voice Chat'}</span>
-              <span>→</span>
-            </button>
+        {/* Heading */}
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+          {language === 'ur' ? (
+            <span className="urdu-text font-bold block leading-[1.6]">
+              آپ کی آواز۔ <span className="text-emerald-600">آپ کا زرعی ساتھی۔</span>
+            </span>
+          ) : (
+            <span>Your Voice. <span className="text-emerald-600">Your Farming Partner.</span></span>
+          )}
+        </h1>
 
-            {/* Secondary CTA */}
-            <button
-              type="button"
-              onClick={() => setShowDemoModal(true)}
-              className="px-4 py-2 rounded-xl bg-white/95 hover:bg-white text-[#102A43] hover:text-[#078747] font-semibold text-xs sm:text-sm border border-[#D2DDEC] shadow-2xs transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <div className="w-5 h-5 rounded-full bg-[#078747]/15 text-[#078747] flex items-center justify-center text-xs">
-                <HiPlay className="translate-x-0.5" />
-              </div>
-              <span>{language === 'ur' ? 'ڈیمو دیکھیں' : 'Watch Demo'}</span>
-            </button>
+        {/* Supporting text */}
+        <p className="mb-6 text-sm sm:text-base text-slate-500 font-medium leading-relaxed max-w-lg">
+          {language === 'ur' ? (
+            <span className="urdu-text block">
+              فصل کی قیمت، زرعی مشورہ اور خریداروں کے بارے میں صرف بول کر معلوم کریں۔
+            </span>
+          ) : (
+            'Ask about crop prices, farming advice and buyers — simply by speaking.'
+          )}
+        </p>
+
+        {/* Action CTAs */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onStartVoiceChat}
+            className="px-5 sm:px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all flex items-center gap-2.5 cursor-pointer active:scale-95 group"
+          >
+            <div className="bg-white/20 p-1.5 rounded-lg group-hover:scale-110 transition-transform">
+              <HiMicrophone className="text-lg shrink-0" />
+            </div>
+            <span>{language === 'ur' ? 'ایگری میکس سے بات کریں' : 'Talk to AgriMax'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/marketplace')}
+            className="px-5 sm:px-6 py-3 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-sm border-2 border-slate-200 hover:border-emerald-200 hover:text-emerald-700 transition-all flex items-center gap-2.5 cursor-pointer active:scale-95 shadow-sm"
+          >
+            <HiBuildingStorefront className="text-lg text-slate-400 shrink-0" />
+            <span>{language === 'ur' ? 'مارکیٹ دیکھیں' : 'Explore Market'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── End: Premium Image Layout ── */}
+      <div className="hidden sm:block w-[280px] md:w-[350px] lg:w-[400px] p-3 shrink-0 relative">
+        <div className="w-full h-full rounded-2xl overflow-hidden shadow-inner relative group">
+          <img
+            src="/images/hero-farmer.jpg"
+            alt="Pakistani farmer in agricultural field"
+            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
+          />
+          {/* Subtle Gradient Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-60" />
+          
+          {/* Floating Glass Badge on Image */}
+          <div className="absolute bottom-4 left-4 right-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-xl p-3 flex items-center justify-between text-white shadow-lg">
+             <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-xs font-bold tracking-wide">Live Market Data</span>
+             </div>
+             <span className="text-[10px] font-medium bg-black/30 px-2 py-1 rounded-md">Updated</span>
           </div>
         </div>
-      </section>
-
-      {/* ── Watch Demo Modal ── */}
-      {showDemoModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-up">
-          <div className="bg-white rounded-3xl border border-[#E2EAF0] shadow-2xl max-w-lg w-full p-6 relative">
-            <button
-              type="button"
-              onClick={() => setShowDemoModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer"
-              aria-label="Close modal"
-            >
-              <HiXMark className="text-xl" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-[#E8F5E9] text-[#078747] flex items-center justify-center text-xl font-bold">
-                🌾
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-[#102A43]">
-                  {language === 'ur' ? 'ایگری میکس صوتی ڈیمو' : 'AgriMax Voice Demo'}
-                </h3>
-                <p className="text-xs text-[#62758A]">
-                  {language === 'ur' ? 'آواز سے زرعی معلومات حاصل کریں' : 'See how voice assistance works'}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3 text-sm text-[#486581] leading-relaxed">
-              <div className="p-3.5 bg-[#F0F8F2] border border-[#D5EEDC] rounded-2xl">
-                <p className="font-bold text-[#078747] text-xs uppercase mb-1">
-                  1. {language === 'ur' ? 'مائیک دبائیں' : 'Tap the Microphone'}
-                </p>
-                <p className="text-xs text-[#102A43]">
-                  {language === 'ur'
-                    ? 'صرف مائیک دبائیں اور اردو یا پنجابی میں اپنا سوال پوچھیں۔'
-                    : 'Simply tap the green microphone and speak in Urdu or English.'}
-                </p>
-              </div>
-
-              <div className="p-3.5 bg-[#F8FAFC] border border-[#E2EAF0] rounded-2xl">
-                <p className="font-bold text-[#102A43] text-xs uppercase mb-1">
-                  2. {language === 'ur' ? 'مثال سوالات' : 'Example Voice Queries'}
-                </p>
-                <ul className="text-xs space-y-1 list-disc list-inside text-[#62758A]">
-                  <li>&ldquo;لاہور منڈی میں گندم کا ریٹ کیا ہے؟&rdquo;</li>
-                  <li>&ldquo;میری چاول کی فصل بیچنی ہے&rdquo;</li>
-                  <li>&ldquo;میرا والیٹ بیلنس دکھاؤ&rdquo;</li>
-                </ul>
-              </div>
-
-              <div className="p-3.5 bg-[#F0F8F2] border border-[#D5EEDC] rounded-2xl">
-                <p className="font-bold text-[#078747] text-xs uppercase mb-1">
-                  3. {language === 'ur' ? 'فوری صوتی و تحریری جواب' : 'Instant Voice & Visual Card'}
-                </p>
-                <p className="text-xs text-[#102A43]">
-                  {language === 'ur'
-                    ? 'ایگری میکس آپ کو تازہ ترین منڈی ریٹ کارڈ اور آواز میں جواب دیتا ہے۔'
-                    : 'AgriMax responds with a live Mandi rate card and spoken audio.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDemoModal(false);
-                  if (onStartVoiceChat) onStartVoiceChat();
-                }}
-                className="w-full py-3 bg-[#078747] hover:bg-[#056B3B] text-white font-bold rounded-xl text-sm transition cursor-pointer"
-              >
-                {language === 'ur' ? 'ابھی آزمائیں (Try Voice Now)' : 'Try Voice Now'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+      </div>
+    </section>
   );
 }

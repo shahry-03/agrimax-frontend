@@ -1,4 +1,5 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import toast from 'react-hot-toast';
 import useChatStore from '../store/useChatStore';
 import useAppStore from '../store/useAppStore';
@@ -6,40 +7,39 @@ import voiceService from '../services/voiceService';
 import useSpeech from './useSpeech';
 import useVoiceAction from './useVoiceAction';
 
-/**
- * Detect best supported audio MIME type for MediaRecorder.
- */
+// --- Constants ---
+const MAX_RECORDING_DURATION_MS = 30000;
+const AUDIO_BITRATE = 64000; // ✅ Improved from 16000 for better STT accuracy
+const AUDIO_MIME_TYPES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+  'audio/aac',
+];
+
 function getSupportedMimeType() {
-  if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
-    return '';
-  }
-  const candidateTypes = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/mp4',
-    'audio/aac',
-  ];
-  for (const type of candidateTypes) {
-    if (MediaRecorder.isTypeSupported(type)) {
-      return type;
-    }
+  if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined') return '';
+  for (const type of AUDIO_MIME_TYPES) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
   }
   return '';
 }
 
-/**
- * useVoice — Core voice interaction hook powered by browser MediaRecorder,
- * backend Whisper STT, Gemini Intent Detection, and speech synthesis TTS.
- */
 export function useVoice() {
+  // Refs
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
   const autoStopTimerRef = useRef(null);
   const resolveStopPromiseRef = useRef(null);
+  
+  // ✅ NEW: Race condition guards
+  const isStartingRef = useRef(false);
+  const abortControllerRef = useRef(null);
 
+  // Shallow Store Selector
   const {
     language,
     sessionId,
@@ -54,13 +54,28 @@ export function useVoice() {
     setError,
     setAwaitingOtp,
     addMessage,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((state) => ({
+      language: state.language,
+      sessionId: state.sessionId,
+      isRecording: state.isRecording,
+      recordingDuration: state.recordingDuration,
+      isProcessing: state.isProcessing,
+      awaitingOtp: state.awaitingOtp,
+      pendingPhone: state.pendingPhone,
+      setRecording: state.setRecording,
+      setRecordingDuration: state.setRecordingDuration,
+      setProcessing: state.setProcessing,
+      setError: state.setError,
+      setAwaitingOtp: state.setAwaitingOtp,
+      addMessage: state.addMessage,
+    }))
+  );
 
   const { login } = useAppStore();
   const { speak, cancel: cancelSpeech } = useSpeech();
   const { executeAction } = useVoiceAction();
 
-  // Check MediaRecorder & getUserMedia browser support
   const [isSupported] = useState(() => {
     return (
       typeof window !== 'undefined' &&
@@ -68,20 +83,27 @@ export function useVoice() {
     );
   });
 
+  // ✅ NEW: Warn user on tab close during recording
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isRecording) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isRecording]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (autoStopTimerRef.current) clearTimeout(autoStopTimerRef.current);
-
+      if (abortControllerRef.current) abortControllerRef.current.abort();
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        try {
-          mediaRecorderRef.current.stop();
-        } catch {
-          // ignore
-        }
+        try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
       }
-
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -89,9 +111,13 @@ export function useVoice() {
     };
   }, []);
 
-  /**
-   * Request / verify microphone permission
-   */
+  const releaseMicrophone = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
   const requestMicPermission = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setError({
@@ -110,11 +136,10 @@ export function useVoice() {
           noiseSuppression: true,
         },
       });
-
       streamRef.current = stream;
       return true;
     } catch (err) {
-      console.warn('Microphone permission error:', err);
+      console.warn('[useVoice] Mic permission error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setError({
           en: 'Microphone permission denied. Please allow in browser settings.',
@@ -135,9 +160,66 @@ export function useVoice() {
     }
   }, [setError]);
 
-  /**
-   * Stop MediaRecorder and return a Promise resolving to recorded audio Blob.
-   */
+  const handleVoiceResponse = useCallback(async (response) => {
+    const data = response?.data;
+    const transcriptText = data?.transcript || '';
+    const intent = data?.intent || 'UNKNOWN';
+    const result = data?.result || null;
+    const confidence = data?.confidence || null;
+    const detectedLanguage = data?.detectedLanguage || null;
+
+    if (response?.isAudioCommand) {
+      addMessage({
+        sender: 'user',
+        text: transcriptText.trim() || (language === 'ur' ? '🎤 صوتی پیغام' : '🎤 Voice Command'),
+      });
+    }
+
+    addMessage({
+      sender: 'assistant',
+      messageEn: response?.messageEn,
+      messageUr: response?.messageUr,
+      intent,
+      confidence,
+      detectedLanguage,
+      result,
+      data,
+      success: response?.success,
+    });
+
+    const speechText = language === 'ur'
+      ? response?.messageUr || response?.messageEn
+      : response?.messageEn || response?.messageUr;
+
+    if (speechText) {
+      try { speak(speechText, language); } catch { /* ignore TTS error */ }
+    }
+
+    if (intent === 'LOGIN' && response?.success) {
+      setAwaitingOtp(true, data?.parameters?.phone || '');
+    }
+
+    if (intent === 'VERIFY_OTP' && response?.success && result?.accessToken) {
+      localStorage.setItem('agrimax_token', result.accessToken);
+      if (result.refreshToken) {
+        localStorage.setItem('agrimax_refresh_token', result.refreshToken);
+      }
+      login(
+        { id: result.userId, name: result.name || 'Farmer', phone: pendingPhone || '' },
+        result.accessToken,
+        result.refreshToken
+      );
+      setAwaitingOtp(false, '');
+      toast.success(
+        language === 'ur' ? 'لاگ ان کامیاب ہو گیا!' : 'Logged in successfully!',
+        { icon: '🌾' }
+      );
+    }
+
+    executeAction(result, intent);
+    return response;
+  }, [addMessage, executeAction, language, login, pendingPhone, setAwaitingOtp, speak]);
+
   const stopRecording = useCallback(() => {
     return new Promise((resolve) => {
       if (timerIntervalRef.current) {
@@ -152,10 +234,12 @@ export function useVoice() {
       setRecording(false);
 
       const recorder = mediaRecorderRef.current;
+      const mimeType = getSupportedMimeType() || 'audio/webm';
+
       if (!recorder || recorder.state === 'inactive') {
-        const mimeType = getSupportedMimeType() || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
         audioChunksRef.current = [];
+        releaseMicrophone();
         resolve(blob);
         return;
       }
@@ -165,181 +249,83 @@ export function useVoice() {
       try {
         recorder.stop();
       } catch (err) {
-        console.warn('Error stopping MediaRecorder:', err);
-        const mimeType = getSupportedMimeType() || 'audio/webm';
+        console.warn('[useVoice] Error stopping recorder:', err);
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
         audioChunksRef.current = [];
+        releaseMicrophone();
         resolve(blob);
       }
-
-      // Stop audio tracks to release microphone hardware
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
     });
-  }, [setRecording]);
+  }, [setRecording, releaseMicrophone]);
 
-  /**
-   * Process recorded audio blob with backend Whisper STT (POST /api/v1/voice/audio)
-   */
-  const processAudio = useCallback(
-    async (blob, preferredLangHint = null) => {
-      if (!blob || blob.size === 0) return null;
+  const processAudio = useCallback(async (blob, preferredLangHint = null) => {
+    if (!blob || blob.size === 0) return null;
 
-      cancelSpeech();
-      setProcessing(true);
-      setError(null);
-
-      const hint =
-        preferredLangHint || (language === 'ur' ? 'ur' : language === 'en' ? 'en' : undefined);
-
-      try {
-        const response = await voiceService.sendAudioCommand({
-          audioBlob: blob,
-          sessionId,
-          languageHint: hint,
-        });
-
-        const data = response.data;
-        const transcriptText = data?.transcript || '';
-
-        // Add user chat message with Whisper transcript
-        if (transcriptText.trim()) {
-          addMessage({
-            sender: 'user',
-            text: transcriptText.trim(),
-          });
-        } else {
-          addMessage({
-            sender: 'user',
-            text: language === 'ur' ? '🎤 صوتی پیغام' : '🎤 Voice Command',
-          });
-        }
-
-        // Add assistant response to persistent chat store
-        const intent = data?.intent || 'UNKNOWN';
-        const result = data?.result || null;
-        const confidence = data?.confidence || null;
-        const detectedLanguage = data?.detectedLanguage || null;
-
-        addMessage({
-          sender: 'assistant',
-          messageEn: response.messageEn,
-          messageUr: response.messageUr,
-          intent,
-          confidence,
-          detectedLanguage,
-          result,
-          data,
-          success: response.success,
-        });
-
-        // Speak the response via SpeechSynthesis TTS
-        const speechText =
-          language === 'ur'
-            ? response.messageUr || response.messageEn
-            : response.messageEn || response.messageUr;
-        if (speechText) {
-          try {
-            speak(speechText, language);
-          } catch {
-            // SpeechSynthesis failure shouldn't crash app
-          }
-        }
-
-        // Multi-turn State Handling:
-        // Turn 1: LOGIN intent -> Backend sends OTP, asks for OTP
-        if (intent === 'LOGIN' && response.success) {
-          const phone = data?.parameters?.phone || '';
-          setAwaitingOtp(true, phone);
-        }
-
-        // Turn 2: VERIFY_OTP intent -> Backend returns JWT token in result
-        if (intent === 'VERIFY_OTP' && response.success && result?.accessToken) {
-          localStorage.setItem('agrimax_token', result.accessToken);
-          if (result.refreshToken) {
-            localStorage.setItem('agrimax_refresh_token', result.refreshToken);
-          }
-          const userObj = {
-            id: result.userId,
-            name: result.name || 'Farmer',
-            phone: pendingPhone || '',
-          };
-          login(userObj, result.accessToken, result.refreshToken);
-          setAwaitingOtp(false, '');
-          toast.success(
-            language === 'ur' ? 'لاگ ان کامیاب ہو گیا!' : 'Logged in successfully!',
-            { icon: '🌾' }
-          );
-        }
-
-        // Execute website control / navigation action if returned
-        executeAction(result, intent);
-
-        return response;
-      } catch (err) {
-        console.error('Audio processing error:', err);
-        const errMsg = {
-          en: 'Failed to process voice command. Please try again.',
-          ur: 'کمانڈ پر عمل نہیں ہو سکا۔ دوبارہ کوشش کریں۔',
-        };
-        setError(errMsg);
-      } finally {
-        setProcessing(false);
-      }
-    },
-    [
-      addMessage,
-      cancelSpeech,
-      executeAction,
-      language,
-      login,
-      pendingPhone,
-      sessionId,
-      setAwaitingOtp,
-      setError,
-      setProcessing,
-      speak,
-    ]
-  );
-
-  /**
-   * Stop recording and immediately process audio
-   */
-  const stopAndProcessAudio = useCallback(
-    async (preferredLangHint = null) => {
-      const blob = await stopRecording();
-      if (blob && blob.size > 0) {
-        return await processAudio(blob, preferredLangHint);
-      }
-      return null;
-    },
-    [stopRecording, processAudio]
-  );
-
-  /**
-   * Start MediaRecorder audio recording.
-   */
-  const startRecording = useCallback(async () => {
     cancelSpeech();
+    setProcessing(true);
     setError(null);
 
-    const hasMic = await requestMicPermission();
-    if (!hasMic || !streamRef.current) return false;
+    // ✅ NEW: Fresh AbortController for this request
+    abortControllerRef.current = new AbortController();
 
-    audioChunksRef.current = [];
-    setRecordingDuration(0);
-
-    const mimeType = getSupportedMimeType();
-    const options = {
-      audioBitsPerSecond: 16000,
-    };
-    if (mimeType) {
-      options.mimeType = mimeType;
-    }
+    const hint = preferredLangHint || (language === 'ur' ? 'ur' : language === 'en' ? 'en' : undefined);
 
     try {
+      const response = await voiceService.sendAudioCommand({
+        audioBlob: blob,
+        sessionId,
+        languageHint: hint,
+        signal: abortControllerRef.current.signal, // ✅ Pass signal
+      });
+
+      if (response) response.isAudioCommand = true;
+      return await handleVoiceResponse(response);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.info('[useVoice] Request aborted by user');
+        return null;
+      }
+      console.error('[useVoice] Audio processing error:', err);
+      setError({
+        en: 'Failed to process voice command. Please try again.',
+        ur: 'کمانڈ پر عمل نہیں ہو سکا۔ دوبارہ کوشش کریں۔',
+      });
+    } finally {
+      setProcessing(false);
+      abortControllerRef.current = null;
+    }
+  }, [cancelSpeech, handleVoiceResponse, language, sessionId, setError, setProcessing]);
+
+  const stopAndProcessAudio = useCallback(async (preferredLangHint = null) => {
+    const blob = await stopRecording();
+    if (blob && blob.size > 0) {
+      return await processAudio(blob, preferredLangHint);
+    }
+    return null;
+  }, [stopRecording, processAudio]);
+
+  const startRecording = useCallback(async () => {
+    // ✅ NEW: Race condition guard - prevent double-click starting 2 recorders
+    if (isStartingRef.current || isRecording) {
+      console.warn('[useVoice] Recording already in progress');
+      return false;
+    }
+    isStartingRef.current = true;
+
+    try {
+      cancelSpeech();
+      setError(null);
+
+      const hasMic = await requestMicPermission();
+      if (!hasMic || !streamRef.current) return false;
+
+      audioChunksRef.current = [];
+      setRecordingDuration(0);
+
+      const mimeType = getSupportedMimeType();
+      const options = { audioBitsPerSecond: AUDIO_BITRATE }; // ✅ Improved bitrate
+      if (mimeType) options.mimeType = mimeType;
+
       const recorder = new MediaRecorder(streamRef.current, options);
 
       recorder.ondataavailable = (event) => {
@@ -352,6 +338,7 @@ export function useVoice() {
         const finalMime = recorder.mimeType || mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: finalMime });
         audioChunksRef.current = [];
+        releaseMicrophone();
 
         if (resolveStopPromiseRef.current) {
           resolveStopPromiseRef.current(blob);
@@ -360,7 +347,7 @@ export function useVoice() {
       };
 
       recorder.onerror = (event) => {
-        console.warn('MediaRecorder error:', event.error);
+        console.warn('[useVoice] MediaRecorder runtime error:', event.error);
         setError({
           en: 'Recording error occurred. Please try again.',
           ur: 'ریکارڈنگ میں خرابی پیش آئی۔ دوبارہ کوشش کریں۔',
@@ -369,172 +356,88 @@ export function useVoice() {
       };
 
       mediaRecorderRef.current = recorder;
-      recorder.start(250); // collect in 250ms chunks
+      recorder.start(250);
       setRecording(true);
 
       const startTime = Date.now();
       timerIntervalRef.current = setInterval(() => {
-        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-        setRecordingDuration(elapsedSeconds);
+        setRecordingDuration(Math.floor((Date.now() - startTime) / 1000));
       }, 1000);
 
-      // Auto-stop after 30 seconds max duration
       autoStopTimerRef.current = setTimeout(async () => {
-        console.info('Auto-stopping recording at max 30s limit');
         await stopAndProcessAudio();
-      }, 30000);
+      }, MAX_RECORDING_DURATION_MS);
 
       return true;
     } catch (err) {
-      console.warn('Failed to start MediaRecorder:', err);
+      console.warn('[useVoice] Failed to start MediaRecorder:', err);
       setError({
         en: 'Could not start audio recorder. Please try typing your command.',
         ur: 'آڈیو ریکارڈر شروع نہیں ہو سکا۔ برائے مہربانی لکھ کر کمانڈ دیں۔',
       });
       setRecording(false);
+      releaseMicrophone();
       return false;
+    } finally {
+      isStartingRef.current = false; // ✅ Always reset
     }
-  }, [
-    cancelSpeech,
-    requestMicPermission,
-    setError,
-    setRecording,
-    setRecordingDuration,
-    stopRecording,
-    stopAndProcessAudio,
-  ]);
+  }, [cancelSpeech, requestMicPermission, setError, setRecording, setRecordingDuration, stopRecording, stopAndProcessAudio, releaseMicrophone, isRecording]);
 
-  /**
-   * Cancel recording without returning audio
-   */
   const cancelRecording = useCallback(() => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     if (autoStopTimerRef.current) clearTimeout(autoStopTimerRef.current);
 
+    // ✅ NEW: Abort any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {
-        // ignore
-      }
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
     }
 
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
+    releaseMicrophone();
     audioChunksRef.current = [];
     resolveStopPromiseRef.current = null;
     setRecording(false);
     setRecordingDuration(0);
-  }, [setRecording, setRecordingDuration]);
+  }, [setRecording, setRecordingDuration, releaseMicrophone]);
 
-  /**
-   * Process a text command (fallback for typing)
-   */
-  const processCommand = useCallback(
-    async (text) => {
-      if (!text || !text.trim()) return;
+  const processCommand = useCallback(async (text) => {
+    if (!text?.trim()) return;
 
-      const trimmedText = text.trim();
-      cancelSpeech();
-      setProcessing(true);
-      setError(null);
+    const trimmedText = text.trim();
+    cancelSpeech();
+    setProcessing(true);
+    setError(null);
 
-      // Add user message to persistent chat
-      addMessage({
-        sender: 'user',
-        text: trimmedText,
+    abortControllerRef.current = new AbortController();
+
+    addMessage({ sender: 'user', text: trimmedText });
+
+    try {
+      const response = await voiceService.sendTextCommand({
+        transcript: trimmedText,
+        sessionId,
+        signal: abortControllerRef.current.signal,
       });
-
-      try {
-        const response = await voiceService.sendTextCommand({
-          transcript: trimmedText,
-          sessionId,
-        });
-
-        const data = response.data;
-        const intent = data?.intent || 'UNKNOWN';
-        const result = data?.result || null;
-        const confidence = data?.confidence || null;
-
-        addMessage({
-          sender: 'assistant',
-          messageEn: response.messageEn,
-          messageUr: response.messageUr,
-          intent,
-          confidence,
-          result,
-          data,
-          success: response.success,
-        });
-
-        const speechText =
-          language === 'ur'
-            ? response.messageUr || response.messageEn
-            : response.messageEn || response.messageUr;
-        if (speechText) {
-          try {
-            speak(speechText, language);
-          } catch {
-            // ignore TTS error
-          }
-        }
-
-        // Multi-turn State Handling
-        if (intent === 'LOGIN' && response.success) {
-          const phone = data?.parameters?.phone || '';
-          setAwaitingOtp(true, phone);
-        }
-
-        if (intent === 'VERIFY_OTP' && response.success && result?.accessToken) {
-          localStorage.setItem('agrimax_token', result.accessToken);
-          if (result.refreshToken) {
-            localStorage.setItem('agrimax_refresh_token', result.refreshToken);
-          }
-          const userObj = {
-            id: result.userId,
-            name: result.name || 'Farmer',
-            phone: pendingPhone || '',
-          };
-          login(userObj, result.accessToken, result.refreshToken);
-          setAwaitingOtp(false, '');
-          toast.success(
-            language === 'ur' ? 'لاگ ان کامیاب ہو گیا!' : 'Logged in successfully!',
-            { icon: '🌾' }
-          );
-        }
-
-        // Execute website control / navigation action
-        executeAction(result, intent);
-
-        return response;
-      } catch (err) {
-        console.error('Text command processing error:', err);
-        const errMsg = {
-          en: 'Failed to process command. Please try again.',
-          ur: 'کمانڈ پر عمل نہیں ہو سکا۔ دوبارہ کوشش کریں۔',
-        };
-        setError(errMsg);
-      } finally {
-        setProcessing(false);
+      return await handleVoiceResponse(response);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.info('[useVoice] Text command aborted');
+        return null;
       }
-    },
-    [
-      addMessage,
-      cancelSpeech,
-      executeAction,
-      language,
-      login,
-      pendingPhone,
-      sessionId,
-      setAwaitingOtp,
-      setError,
-      setProcessing,
-      speak,
-    ]
-  );
+      console.error('[useVoice] Text command processing error:', err);
+      setError({
+        en: 'Failed to process command. Please try again.',
+        ur: 'کمانڈ پر عمل نہیں ہو سکا۔ دوبارہ کوشش کریں۔',
+      });
+    } finally {
+      setProcessing(false);
+      abortControllerRef.current = null;
+    }
+  }, [addMessage, cancelSpeech, handleVoiceResponse, sessionId, setError, setProcessing]);
 
   return {
     isSupported,
@@ -549,7 +452,6 @@ export function useVoice() {
     cancelRecording,
     processAudio,
     processCommand,
-    // Backwards compatibility aliases
     isListening: isRecording,
     startListening: startRecording,
     stopListening: stopAndProcessAudio,

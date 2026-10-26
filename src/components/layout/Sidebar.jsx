@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   HiHome,
   HiShoppingCart,
@@ -6,109 +6,121 @@ import {
   HiWallet,
   HiUser,
   HiCog6Tooth,
+  HiQuestionMarkCircle,
+  HiSparkles,
 } from 'react-icons/hi2';
 import useAppStore from '../../store/useAppStore';
 
 const SIDEBAR_ITEMS = [
   { path: '/', icon: HiHome, labelEn: 'Home', labelUr: 'ہوم' },
-  { path: '/marketplace', icon: HiShoppingCart, labelEn: 'Market', labelUr: 'مارکیٹ' },
-  { path: '/prices', icon: HiChartBar, labelEn: 'Prices', labelUr: 'قیمتیں' },
+  { path: '/marketplace', icon: HiShoppingCart, labelEn: 'Marketplace', labelUr: 'مارکیٹ' },
+  { path: '/prices', icon: HiChartBar, labelEn: 'Mandi Prices', labelUr: 'قیمتیں' },
   { path: '/wallet', icon: HiWallet, labelEn: 'Wallet', labelUr: 'والیٹ' },
+];
+
+const BOTTOM_ITEMS = [
   { path: '/profile', icon: HiUser, labelEn: 'Profile', labelUr: 'پروفائل' },
   { path: '/settings', icon: HiCog6Tooth, labelEn: 'Settings', labelUr: 'سیٹنگز' },
 ];
 
 export default function Sidebar() {
   const { language } = useAppStore();
+  const navigate = useNavigate();
+
+  // Helper to render a single Nav Item beautifully
+  const renderNavItem = (item) => {
+    const Icon = item.icon;
+    const label = language === 'ur' ? item.labelUr : item.labelEn;
+
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        end={item.path === '/'}
+        className={({ isActive }) =>
+          `group flex items-center gap-3.5 px-3 py-2.5 rounded-2xl text-sm font-semibold transition-all duration-300 cursor-pointer select-none relative overflow-hidden ${
+            isActive
+              ? 'bg-emerald-50/80 text-emerald-800 shadow-sm shadow-emerald-100/50'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`
+        }
+      >
+        {({ isActive }) => (
+          <>
+            {/* Active Indicator Bar */}
+            {isActive && (
+              <span className="absolute start-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-emerald-600 rounded-e-full" />
+            )}
+
+            {/* Icon Container */}
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ${
+                isActive
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 scale-105'
+                  : 'bg-slate-100 text-slate-400 group-hover:bg-white group-hover:text-emerald-600 group-hover:shadow-sm'
+              }`}
+            >
+              <Icon className="text-lg" />
+            </div>
+
+            {/* Label */}
+            <span className="truncate flex-1">{label}</span>
+
+            {/* Optional Sparkle for new features (static for now) */}
+            {item.path === '/marketplace' && !isActive && (
+               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </>
+        )}
+      </NavLink>
+    );
+  };
 
   return (
-    <aside className="w-full shrink-0 flex flex-col justify-between p-4 bg-transparent border-r border-[#E2EAF0] min-h-[calc(100vh-72px)] sticky top-[72px] overflow-hidden">
-      {/* ── Navigation Links ── */}
-      <nav className="space-y-1.5" aria-label="Main sidebar navigation">
-        {SIDEBAR_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const label = language === 'ur' ? item.labelUr : item.labelEn;
+    <aside className="w-full shrink-0 flex flex-col h-[calc(100vh-80px)] sticky top-[80px] py-6 pe-4 border-e border-slate-200/80">
+      
+      {/* ── Main Navigation ── */}
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
+        <p className="px-3 mb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          {language === 'ur' ? 'مینو' : 'MAIN MENU'}
+        </p>
+        <nav className="space-y-1.5" aria-label="Main sidebar navigation">
+          {SIDEBAR_ITEMS.map(renderNavItem)}
+        </nav>
 
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer min-h-[44px] select-none ${
-                  isActive
-                    ? 'bg-[#078747] text-white shadow-xs font-bold'
-                    : 'text-[#62758A] hover:text-[#078747] hover:bg-[#F0F8F2]'
-                }`
-              }
-            >
-              <Icon className="text-xl shrink-0 text-current" />
-              <span className="truncate leading-none">{label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+        <div className="my-6 border-t border-slate-100/80 mx-3" />
 
-      {/* ── Bottom Agricultural Graphic Card ── */}
-      <div className="mt-auto pt-6">
-        <div className="w-full rounded-2xl bg-gradient-to-br from-[#EBF7EE] to-[#DCF0E2] border border-[#D5EEDC] p-4 text-[#102A43] relative overflow-hidden shadow-2xs">
-          {/* Leaf icon */}
-          <div className="w-8 h-8 rounded-lg bg-[#078747]/15 text-[#078747] flex items-center justify-center mb-2.5">
-            <svg
-              className="w-5 h-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-            </svg>
-          </div>
+        <p className="px-3 mb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          {language === 'ur' ? 'اکاؤنٹ' : 'ACCOUNT'}
+        </p>
+        <nav className="space-y-1.5" aria-label="Account sidebar navigation">
+          {BOTTOM_ITEMS.map(renderNavItem)}
+        </nav>
+      </div>
 
-          <p className="text-xs font-extrabold text-[#056B3B] uppercase tracking-wider mb-0.5">
-            AgriMax
-          </p>
-          <p className="text-sm font-bold text-[#102A43] leading-snug">
-            Better Farmers <br />
-            Brighter Future
-          </p>
-          <p className="text-[11px] text-[#62758A] mt-1 urdu-text leading-tight">
-            خوشحال کسان، خوشحال پاکستان
-          </p>
-
-          {/* Decorative countryside hills SVG */}
-          <div className="mt-2 w-full h-14 opacity-80 overflow-hidden">
-            <svg
-              viewBox="0 0 240 70"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-full h-full"
-            >
-              {/* Soft Sun */}
-              <circle cx="210" cy="20" r="10" fill="#FBBF24" fillOpacity="0.5" />
-              <circle cx="210" cy="20" r="6" fill="#F59E0B" fillOpacity="0.6" />
-              {/* Background Hill */}
-              <path
-                d="M0 70C30 40 70 34 110 46C150 58 180 36 240 44V70H0Z"
-                fill="#86EFAC"
-                fillOpacity="0.4"
-              />
-              {/* Foreground Hill */}
-              <path
-                d="M0 70C45 46 95 42 140 52C185 62 210 50 240 54V70H0Z"
-                fill="#22C55E"
-                fillOpacity="0.35"
-              />
-              {/* Miniature Trees */}
-              <path d="M25 54C25 48 29 44 32 44C35 44 39 48 39 54H25Z" fill="#15803D" />
-              <path d="M48 58C48 52 52 48 55 48C58 48 62 52 62 58H48Z" fill="#16A34A" />
-              <path d="M105 50C105 44 109 40 112 40C115 40 119 44 119 50H105Z" fill="#15803D" />
-              <path d="M116 54C116 49 119 45 122 45C125 45 128 49 128 54H116Z" fill="#22C55E" />
-            </svg>
-          </div>
+      {/* ── Bottom Promo/Support Card ── */}
+      <div className="mt-auto pt-4 px-1">
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 shadow-lg group cursor-pointer" onClick={() => navigate('/support')}>
+           {/* Decorative background circle */}
+           <div className="absolute -right-4 -top-4 w-20 h-20 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-all duration-500" />
+           
+           <div className="relative z-10">
+             <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center mb-3">
+               <HiQuestionMarkCircle className="text-emerald-400 text-lg" />
+             </div>
+             <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-1.5">
+               {language === 'ur' ? 'مدد کی ضرورت ہے؟' : 'Need Help?'}
+               <HiSparkles className="text-amber-400 text-xs animate-pulse" />
+             </h4>
+             <p className="text-slate-400 text-[11px] leading-relaxed mb-3">
+               {language === 'ur' 
+                 ? 'ہماری زرعی ٹیم سے بات کریں یا AI سے پوچھیں۔' 
+                 : 'Chat with our support or ask the AI assistant.'}
+             </p>
+             <div className="inline-flex items-center text-[11px] font-bold text-emerald-400 group-hover:text-emerald-300 transition-colors">
+               {language === 'ur' ? 'رابطہ کریں' : 'Get Support'} <span className="rtl:rotate-180 inline-block ml-1 group-hover:translate-x-1 transition-transform">→</span>
+             </div>
+           </div>
         </div>
       </div>
     </aside>
