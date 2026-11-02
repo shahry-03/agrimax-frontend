@@ -6,9 +6,8 @@ import useVoice from '../hooks/useVoice';
 
 // Components
 import HeroSection from '../components/dashboard/HeroSection';
-import CentralVoiceBar from '../components/dashboard/CentralVoiceBar';
 import QuickActions from '../components/dashboard/QuickActions';
-import AIChatPanel from '../components/AIChatPanel';
+import VoiceRobotAssistant from '../components/dashboard/VoiceRobotAssistant';
 import MarketPriceWidget from '../components/dashboard/MarketPriceWidget';
 import FarmerGrowthCard from '../components/dashboard/FarmerGrowthCard';
 import FeatureStrip from '../components/dashboard/FeatureStrip';
@@ -153,20 +152,15 @@ export function HomePage() {
           <HeroSection onStartVoiceChat={handleStartVoice} />
         </div>
 
-        {/* 2. Central Voice & Text Interaction Bar */}
+        {/* 2. Quick Actions Grid */}
         <div className="motion-safe:animate-fade-up [animation-delay:100ms]">
-          <CentralVoiceBar />
-        </div>
-
-        {/* 3. Quick Actions Grid */}
-        <div className="motion-safe:animate-fade-up [animation-delay:200ms]">
           <QuickActions onActionQuery={handleActionQuery} />
         </div>
 
-        {/* 4. Main Workspace */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 items-start w-full motion-safe:animate-fade-up [animation-delay:300ms]">
+        {/* 3. Main Workspace: Voice Robot Assistant & Market Price Widget */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 items-start w-full motion-safe:animate-fade-up [animation-delay:200ms]">
           <div className="xl:col-span-8 min-w-0 w-full">
-            <AIChatPanel />
+            <VoiceRobotAssistant />
           </div>
 
           <div className="xl:col-span-4 min-w-0 w-full xl:sticky xl:top-24 space-y-6">

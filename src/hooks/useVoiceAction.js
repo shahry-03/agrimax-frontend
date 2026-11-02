@@ -54,6 +54,18 @@ export function useVoiceAction() {
    */
   const executeAction = useCallback(
     (result, intent) => {
+      // Farmer-first rule: Informational queries (crop prices, guidance, weather)
+      // must stay on current screen and display in-place data cards without navigation.
+      if (
+        intent === 'GET_CROP_PRICE' ||
+        intent === 'GET_RECOMMENDATION' ||
+        intent === 'WEATHER' ||
+        result?.crop ||
+        result?.cropName
+      ) {
+        return false;
+      }
+
       // Determine action type from result.action or fallback from intent
       let action = result?.action;
       if (!action && intent === 'GO_BACK') {

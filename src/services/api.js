@@ -349,9 +349,35 @@ api.interceptors.response.use(
 // ══════════════════════════════════════════════════════
 
 export const authApi = {
-  sendOtp: (phone, config = {}) => api.post('/auth/send-otp', { phone }, config),
-  verifyOtp: (phone, otp, config = {}) =>
-    api.post('/auth/verify-otp', { phone, otp }, config),
+  // Farmer OTP auth — accepts phoneNumber string or object, sends { phoneNumber }
+  sendOtp: (phoneOrPayload, config = {}) => {
+    const phoneNumber = typeof phoneOrPayload === 'string'
+      ? phoneOrPayload
+      : phoneOrPayload?.phoneNumber || phoneOrPayload?.phone;
+    return api.post('/auth/send-otp', { phoneNumber }, config);
+  },
+  verifyOtp: (phoneOrPayload, maybeOtp, config = {}) => {
+    let phoneNumber, otp;
+    if (typeof phoneOrPayload === 'string') {
+      phoneNumber = phoneOrPayload;
+      otp = maybeOtp;
+    } else {
+      phoneNumber = phoneOrPayload?.phoneNumber || phoneOrPayload?.phone;
+      otp = phoneOrPayload?.otp || maybeOtp;
+    }
+    return api.post('/auth/verify-otp', { phoneNumber, otp }, config);
+  },
+
+  // Buyer Auth
+  buyerRegister: (data, config = {}) => api.post('/auth/buyer/register', data, config),
+  buyerLogin: (data, config = {}) => api.post('/auth/buyer/login', data, config),
+  buyerVerify2fa: (data, config = {}) => api.post('/auth/buyer/2fa/verify', data, config),
+  buyerVerifyEmail: (token, config = {}) => api.post('/auth/buyer/verify-email', { token }, config),
+  buyerResendVerification: (email, config = {}) => api.post('/auth/buyer/resend-verification', { email }, config),
+  buyerForgotPassword: (email, config = {}) => api.post('/auth/buyer/forgot-password', { email }, config),
+  buyerResetPassword: (data, config = {}) => api.post('/auth/buyer/reset-password', data, config),
+
+  // Session & Refresh
   refresh: (refreshToken, config = {}) =>
     refreshClient.post('/auth/refresh', { refreshToken }, config),
   logout: (config = {}) => api.post('/auth/logout', {}, config),
@@ -387,6 +413,23 @@ export const marketplaceApi = {
   updatePost: (id, data, config = {}) =>
     api.patch(`/marketplace/posts/${id}`, data, config),
   deletePost: (id, config = {}) => api.delete(`/marketplace/posts/${id}`, config),
+
+  // 🆕 Bids
+  placeBid: (postId, data, config = {}) =>
+    api.post(`/marketplace/posts/${postId}/bids`, data, config),
+  getPostBids: (postId, config = {}) =>
+    api.get(`/marketplace/posts/${postId}/bids`, config),
+  getMyBids: (config = {}) => api.get('/marketplace/my-bids', config),
+  acceptBid: (bidId, config = {}) =>
+    api.post(`/marketplace/bids/${bidId}/accept`, {}, config),
+
+  // 🆕 Deals & Escrow
+  getMyDeals: (config = {}) => api.get('/marketplace/deals', config),
+  getDeal: (id, config = {}) => api.get(`/marketplace/deals/${id}`, config),
+  completeDeal: (id, config = {}) =>
+    api.post(`/marketplace/deals/${id}/complete`, {}, config),
+  cancelDeal: (id, config = {}) =>
+    api.post(`/marketplace/deals/${id}/cancel`, {}, config),
 };
 
 export const walletApi = {
@@ -398,11 +441,36 @@ export const walletApi = {
 
 export const notificationsApi = {
   list: (config = {}) => api.get('/notifications', config),
+  getUnread: (config = {}) => api.get('/notifications/unread', config),
+  getUnreadCount: (config = {}) => api.get('/notifications/unread-count', config),
   markRead: (id, config = {}) =>
-    api.patch(`/notifications/${id}/read`, {}, config),
+    api.post(`/notifications/${id}/read`, {}, config),
   markAllRead: (config = {}) =>
-    api.patch('/notifications/read-all', {}, config),
+    api.post('/notifications/read-all', {}, config),
   delete: (id, config = {}) => api.delete(`/notifications/${id}`, config),
+};
+
+export const dashboardApi = {
+  getFarmerDashboard: (config = {}) => api.get('/farmer/dashboard', config),
+  getBuyerDashboard: (config = {}) => api.get('/buyer/dashboard', config),
+  getAdminDashboard: (config = {}) => api.get('/admin/dashboard', config),
+};
+
+export const userApi = {
+  listSessions: (config = {}) => api.get('/users/me/sessions', config),
+  revokeSession: (sessionId, config = {}) =>
+    api.delete(`/users/me/sessions/${sessionId}`, config),
+  revokeAllExceptCurrent: (config = {}) =>
+    api.delete('/users/me/sessions', config),
+  get2faStatus: (config = {}) => api.get('/users/me/2fa/status', config),
+  setup2fa: (config = {}) => api.post('/users/me/2fa/setup', {}, config),
+  enable2fa: (data, config = {}) => api.post('/users/me/2fa/enable', data, config),
+  disable2fa: (data, config = {}) => api.post('/users/me/2fa/disable', data, config),
+};
+
+export const devApi = {
+  topUpWallet: (amount, config = {}) =>
+    api.post('/dev/wallet/topup', { amount }, config),
 };
 
 export const aiApi = {

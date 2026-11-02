@@ -23,13 +23,15 @@ export function useAuth() {
   const hasRole = (role) => user?.role === role;
   const hasAnyRole = (roles) => roles.includes(user?.role);
   
-  const isFarmer = hasRole('FARMER') || user?.role === undefined; // Default to farmer
+  const isFarmer = hasRole('FARMER') || (!user?.role && !user?.email);
+  const isBuyer = hasRole('BUYER');
   const isAdmin = hasRole('ADMIN');
+  const isDelivery = hasRole('DELIVERY');
   const isGuest = !isAuthenticated;
 
   // 2. Avatar Initials (e.g., "Ali Khan" -> "AK")
   const getUserInitials = () => {
-    if (!user?.name) return '👨‍🌾';
+    if (!user?.name) return isBuyer ? '💼' : '👨‍🌾';
     return user.name
       .split(' ')
       .map((n) => n[0])
@@ -69,7 +71,9 @@ export function useAuth() {
     
     // Roles
     isFarmer,
+    isBuyer,
     isAdmin,
+    isDelivery,
     hasRole,
     hasAnyRole,
 

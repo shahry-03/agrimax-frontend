@@ -269,7 +269,9 @@ export const useAppStore = create(
       // ─────────────────────────────────
       getUserInitials: () => {
         const user = get().user;
-        if (!user?.name || typeof user.name !== 'string') return '👨‍🌾';
+        if (!user?.name || typeof user.name !== 'string') {
+          return user?.role === 'BUYER' ? '💼' : '👨‍🌾';
+        }
         const initials = user.name
           .trim()
           .split(/\s+/)
@@ -277,14 +279,16 @@ export const useAppStore = create(
           .join('')
           .toUpperCase()
           .slice(0, 2);
-        return initials || '👨‍🌾';
+        return initials || (user?.role === 'BUYER' ? '💼' : '👨‍🌾');
       },
       hasRole: (role) => get().user?.role === role,
       isAdmin: () => get().user?.role === 'ADMIN',
       isFarmer: () => {
         const role = get().user?.role;
-        return role === 'FARMER' || !role;
+        return role === 'FARMER' || (!role && !get().user?.email);
       },
+      isBuyer: () => get().user?.role === 'BUYER',
+      isDelivery: () => get().user?.role === 'DELIVERY',
 
       // ─────────────────────────────────
       // ⚠️ DEPRECATED — should live in useChatStore only

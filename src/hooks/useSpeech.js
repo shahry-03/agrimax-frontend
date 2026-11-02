@@ -94,6 +94,52 @@ export function useSpeech() {
     setIsSpeaking(false);
   }, [setIsSpeaking]);
 
+  const currentAudioRef = useRef(null);
+
+  /**
+   * Plays base64 audio returned by server TTS.
+   */
+  const playAudioBase64 = useCallback(
+    (base64, format = 'audio/mp3') => {
+      if (!base64 || typeof window === 'undefined') return false;
+
+      // Cancel any ongoing speech synthesis or audio playback
+      cancel();
+
+      try {
+        const audioSrc = `data:${format || 'audio/mp3'};base64,${base64}`;
+        const audio = new Audio(audioSrc);
+        currentAudioRef.current = audio;
+
+        setIsSpeaking(true);
+
+        audio.onended = () => {
+          setIsSpeaking(false);
+          currentAudioRef.current = null;
+        };
+
+        audio.onerror = (e) => {
+          console.warn('[useSpeech] Server audio playback failed, falling back:', e);
+          setIsSpeaking(false);
+          currentAudioRef.current = null;
+        };
+
+        audio.play().catch((err) => {
+          console.warn('[useSpeech] Autoplay blocked or playback error:', err);
+          setIsSpeaking(false);
+          currentAudioRef.current = null;
+        });
+
+        return true;
+      } catch (err) {
+        console.warn('[useSpeech] playAudioBase64 error:', err);
+        setIsSpeaking(false);
+        return false;
+      }
+    },
+    [setIsSpeaking]
+  );
+
   /**
    * Speaks given text in specified language ('ur' or 'en').
    */
@@ -104,6 +150,12 @@ export function useSpeech() {
       const activeLang = targetLang || language || 'ur';
 
       // Cancel any existing speech and clear queue
+      if (currentAudioRef.current) {
+        try {
+          currentAudioRef.current.pause();
+          currentAudioRef.current = null;
+        } catch {}
+      }
       window.speechSynthesis.cancel();
       queueRef.current = [];
       isProcessingQueueRef.current = false;
@@ -138,19 +190,26 @@ export function useSpeech() {
   );
 
   const cancel = useCallback(() => {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      } catch {}
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       queueRef.current = [];
       isProcessingQueueRef.current = false;
-      setIsSpeaking(false);
     }
+    setIsSpeaking(false);
   }, [setIsSpeaking]);
 
   return {
     speak,
+    playAudioBase64,
     cancel,
     isSpeaking,
-    isSupported: typeof window !== 'undefined' && 'speechSynthesis' in window,
+    isSupported: typeof window !== 'undefined' && ('speechSynthesis' in window || typeof Audio !== 'undefined'),
   };
 }
 

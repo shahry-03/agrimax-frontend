@@ -73,7 +73,7 @@ export function useVoice() {
   );
 
   const { login } = useAppStore();
-  const { speak, cancel: cancelSpeech } = useSpeech();
+  const { speak, playAudioBase64, cancel: cancelSpeech } = useSpeech();
   const { executeAction } = useVoiceAction();
 
   const [isSupported] = useState(() => {
@@ -167,6 +167,7 @@ export function useVoice() {
     const result = data?.result || null;
     const confidence = data?.confidence || null;
     const detectedLanguage = data?.detectedLanguage || null;
+    const serverAudio = data?.audio || response?.audio;
 
     if (response?.isAudioCommand) {
       addMessage({
@@ -187,16 +188,24 @@ export function useVoice() {
       success: response?.success,
     });
 
-    const speechText = language === 'ur'
-      ? response?.messageUr || response?.messageEn
-      : response?.messageEn || response?.messageUr;
+    // Prefer server-side synthesized TTS audio; fallback to browser speech synthesis
+    let audioPlayed = false;
+    if (serverAudio?.base64) {
+      audioPlayed = playAudioBase64(serverAudio.base64, serverAudio.format || 'audio/mp3');
+    }
 
-    if (speechText) {
-      try { speak(speechText, language); } catch { /* ignore TTS error */ }
+    if (!audioPlayed) {
+      const speechText = language === 'ur'
+        ? response?.messageUr || response?.messageEn
+        : response?.messageEn || response?.messageUr;
+
+      if (speechText) {
+        try { speak(speechText, language); } catch { /* ignore TTS error */ }
+      }
     }
 
     if (intent === 'LOGIN' && response?.success) {
-      setAwaitingOtp(true, data?.parameters?.phone || '');
+      setAwaitingOtp(true, data?.parameters?.phone || data?.parameters?.phoneNumber || '');
     }
 
     if (intent === 'VERIFY_OTP' && response?.success && result?.accessToken) {
@@ -205,7 +214,12 @@ export function useVoice() {
         localStorage.setItem('agrimax_refresh_token', result.refreshToken);
       }
       login(
-        { id: result.userId, name: result.name || 'Farmer', phone: pendingPhone || '' },
+        {
+          id: result.userId,
+          name: result.name || 'Farmer',
+          phone: pendingPhone || result.phoneNumber || '',
+          role: result.role || data?.userRole || 'FARMER',
+        },
         result.accessToken,
         result.refreshToken
       );
@@ -218,7 +232,7 @@ export function useVoice() {
 
     executeAction(result, intent);
     return response;
-  }, [addMessage, executeAction, language, login, pendingPhone, setAwaitingOtp, speak]);
+  }, [addMessage, executeAction, language, login, pendingPhone, playAudioBase64, setAwaitingOtp, speak]);
 
   const stopRecording = useCallback(() => {
     return new Promise((resolve) => {

@@ -24,8 +24,12 @@ import {
   HiOutlineXMark,
   HiOutlineSparkles,
   HiOutlineDocumentText,
+  HiOutlineKey,
+  HiOutlineDevicePhoneMobile,
+  HiOutlineComputerDesktop,
 } from 'react-icons/hi2';
 import useAppStore from '../store/useAppStore';
+import { userApi } from '../services/api';
 
 // ── Voice command examples (human-friendly, no tech codes) ──
 const VOICE_COMMANDS = [
